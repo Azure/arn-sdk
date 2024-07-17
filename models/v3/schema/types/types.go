@@ -40,7 +40,7 @@ type Data struct {
 	// This is a JSON serialized version of the Resources field.
 	Data json.RawMessage `json:"resources"`
 	// AdditionalBatchProperties can contain the sdkversion, batchsize, subscription partition tag etc.
-	AdditionalBatchProperties any `json:"additionalBatchProperties,omitzero"`
+	AdditionalBatchProperties map[string]any `json:"additionalBatchProperties,omitzero"`
 	// ResourcesBlobInfo is the information about the storage blob used to store the payload of resources included in this notification.
 	// Populated only when a blob is used, in which case ResourcesContainer is set to Blob.
 	ResourcesBlobInfo ResourcesBlobInfo `json:"resourcesBlobInfo,omitzero"`
