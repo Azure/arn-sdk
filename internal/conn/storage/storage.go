@@ -39,6 +39,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
@@ -245,7 +246,7 @@ func handleUploadErr(ctx context.Context, err error, client createContainer) err
 		return nil
 	}
 
-	if strings.Contains(err.Error(), "ContainerNotFound") {
+	if bloberror.HasCode(err, bloberror.ContainerNotFound) {
 		_, err = client.Create(ctx, nil)
 		if err == nil || strings.Contains(err.Error(), "ContainerAlreadyExists") {
 			return nil
