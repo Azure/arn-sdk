@@ -80,7 +80,7 @@ func (r *Service) Close() error {
 }
 
 // Send sends a notification to the ARN service. This will block if the internal channel is full.
-// notify. Data must be less than 1000 items. Not thread safe.
+// notify.DataCount() must indicate no more than 1000 items. Not thread safe.
 func (s *Service) Send(notify models.Notifications) {
 	if notify.DataCount() > 1000 {
 		notify.SendPromise(models.ErrBatchSize, s.clientErrs)
