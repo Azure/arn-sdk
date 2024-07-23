@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 )
@@ -19,6 +21,60 @@ func withTestCred(cd *credData) ccOption {
 		c.cred.Store(cd)
 		c.start = false
 		return nil
+	}
+}
+
+func TestWithContainerExt(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		ext     string
+		wantErr bool
+	}{
+		{
+			name:    "Error: name contains uppercase letter",
+			ext:     "UPPERCASE",
+			wantErr: true,
+		},
+		{
+			name:    "Error: name contains special character",
+			ext:     "special!",
+			wantErr: true,
+		},
+		{
+			name:    "Error: name is too short",
+			ext:     "",
+			wantErr: true,
+		},
+		{
+			name:    "Error: name is too long",
+			ext:     "123456789012345678901234567890123456789012",
+			wantErr: true,
+		},
+		{
+			name: "Success",
+			ext:  "lowercase-1234",
+		},
+	}
+
+	for _, test := range tests {
+		c := &Client{}
+		err := WithContainerExt(test.ext)(c)
+		switch {
+		case test.wantErr && err == nil:
+			t.Errorf("TestWithExt(%s): got err == nil, want err != nil ", test.name)
+			continue
+		case !test.wantErr && err != nil:
+			t.Errorf("TestWithExt(%s): got err == %s, want err == nil ", test.name, err)
+			continue
+		case err != nil:
+			continue
+		}
+
+		if c.contExt != test.ext {
+			t.Errorf("TestWithExt(%s): got c.contExt == %s, want c.contExt == %s ", test.name, c.contExt, test.ext)
+		}
 	}
 }
 
@@ -120,6 +176,13 @@ func TestUploadPrivate(t *testing.T) {
 func TestHandleUploadErr(t *testing.T) {
 	t.Parallel()
 
+	cnfErr := &azcore.ResponseError{
+		ErrorCode: string(bloberror.ContainerNotFound),
+	}
+	contExistErr := &azcore.ResponseError{
+		ErrorCode: string(bloberror.ContainerAlreadyExists),
+	}
+
 	tests := []struct {
 		name           string
 		fakeContClient fakeContClient
@@ -142,7 +205,7 @@ func TestHandleUploadErr(t *testing.T) {
 			fakeContClient: fakeContClient{
 				err: errors.New("normal error"),
 			},
-			err:           errors.New("^ContainerNotFound$"),
+			err:           cnfErr,
 			wantTryCreate: true,
 			wantErr:       true,
 		},
@@ -151,15 +214,15 @@ func TestHandleUploadErr(t *testing.T) {
 			fakeContClient: fakeContClient{
 				err: nil,
 			},
-			err:           errors.New("^ContainerNotFound$"),
+			err:           cnfErr,
 			wantTryCreate: true,
 		},
 		{
 			name: "Container not found, Create() returns ContainerAlreadyExists",
 			fakeContClient: fakeContClient{
-				err: errors.New(" ContainerAlreadyExists abc"),
+				err: contExistErr,
 			},
-			err:           errors.New("^ContainerNotFound$"),
+			err:           cnfErr,
 			wantTryCreate: true,
 		},
 	}

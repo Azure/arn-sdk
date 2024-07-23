@@ -34,7 +34,6 @@ import (
 	"log/slog"
 	"net/url"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -248,7 +247,7 @@ func handleUploadErr(ctx context.Context, err error, client createContainer) err
 
 	if bloberror.HasCode(err, bloberror.ContainerNotFound) {
 		_, err = client.Create(ctx, nil)
-		if err == nil || strings.Contains(err.Error(), "ContainerAlreadyExists") {
+		if err == nil || bloberror.HasCode(err, bloberror.ContainerAlreadyExists) {
 			return nil
 		}
 		return err
