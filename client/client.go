@@ -127,7 +127,7 @@ Example - sending a notification synchronously using the v3 model using a AKS no
 		PublisherInfo: "",
 		Data: []types.NotificationResource{
 			{
-				Data: n, // This is the Node object that will be serialized to JSON.
+				Data: node, // This is the Node object that will be serialized to JSON.
 				ResourceEventTime: n.GetCreationTimestamp().Time.UTC(),
 				ArmResource: armRsc,
 				ResourceID: rescID.String(),
