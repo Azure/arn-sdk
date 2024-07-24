@@ -189,6 +189,8 @@ type ARN struct {
 	orderID atomic.Uint64
 
 	testConn func(n models.Notifications)
+
+	sigSenderClosed chan struct{}
 }
 
 // Option is a function that sets an option on the client.
@@ -313,7 +315,8 @@ func (a BlobArgs) validate() error {
 // New creates a new ARN client.
 func New(ctx context.Context, args Args, options ...Option) (*ARN, error) {
 	a := &ARN{
-		errs: make(chan error, 1),
+		errs:            make(chan error, 1),
+		sigSenderClosed: make(chan struct{}),
 	}
 
 	for _, o := range options {
@@ -344,6 +347,11 @@ func New(ctx context.Context, args Args, options ...Option) (*ARN, error) {
 // Close closes the client. This will close the In() channel.
 func (a *ARN) Close() {
 	close(a.in)
+
+	if a.sigSenderClosed != nil {
+		<-a.sigSenderClosed
+		a.conn.Close()
+	}
 }
 
 // Errors returns a channel that will receive any errors that occur in the client where a
@@ -422,6 +430,8 @@ func (a *ARN) Async(ctx context.Context, n models.Notifications, promise bool) m
 
 // sender loops on our input channel and sends notifications to the ARN service.
 func (a *ARN) sender() {
+	defer close(a.sigSenderClosed)
+
 	for n := range a.in {
 		if a.testConn != nil {
 			a.testConn(n)
