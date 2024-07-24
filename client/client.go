@@ -30,6 +30,7 @@ Example - boilerplate that is needed on AKS to make ARN connections:
 
 	// aaa is a helper function to get the k8s clientset and managed identity credential.
 	func aaa() (*kubernetes.Clientset, *azidentity.ManagedIdentityCredential, error) {
+			// If you are not sending notifications from K8, then you would not need this.
 			clientSet, err := k8Clientset()
 			if err != nil {
 				return nil, nil, err
@@ -81,7 +82,10 @@ Example - boilerplate that is needed on AKS to make ARN connections:
 			panic("RESOURCE_ID environment variable must be set")
 		}
 
-		clientset, cred, err := aaa()
+		// This gets our AAA resources.
+		// Note: I am ignoring the K8 clientset here, as it is not needed for the ARN client.
+		// It would be needed for getting K8 data (if that is your source data) to send to ARN.
+		_, cred, err := aaa()
 		if err != nil {
 			panic(err)
 		}
