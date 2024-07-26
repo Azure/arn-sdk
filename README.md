@@ -1,16 +1,12 @@
 # ARN Client for Go
 
-![Logo](logo.webp "Azure Resource Notifications")
-
 This package provides a Go client for Azure Resource Notifications.
-
-**Important Note:** This package is intended for use by Microsoft employees only. If you are a Microsoft employee, please contact the ARN team for assistance in getting started.
 
 All basic usage information for the client is available in the `client` package godoc. To effectively use this client, you will need to contact the ARN team to obtain the necessary information for configuring your service to utilize the client.
 
 ## Notes:
 
-This package is based on a previous package developed by another developer, which was not in active use. After utilizing that package for some time, we identified various improvements that could be made. This is a complete re-write to incorporate those improvements. The original package was crucial in bootstrapping this project and shares some code with this new version.
+This package is based on a previous package developed (internally at Microsoft) by another developer, which was not in active use for sending data. After utilizing that package for some time, we identified various improvements that could be made. This is a re-write to incorporate those improvements. The original package was crucial in bootstrapping this project and shares some code with this new version.
 
 Key changes and improvements in this package include:
 
@@ -19,5 +15,29 @@ Key changes and improvements in this package include:
 - **Support for synchronous and asynchronous methods:** This provides flexibility in how the client can be used.
 - **Enhanced documentation:** More comprehensive documentation makes it easier to understand and use the client.
 - **Improved testing:** Tests have been revamped to be faster and cleaner, replacing ginkgo tests with standard Go tests and eliminating the use of mock libraries.
+- **Fixes constant value address issuess:** The original package defined some constants for enumermated values, but the SDK required the address of these constants. This required redefining the constants as variables to get their address. This fixes that issue.
+- **Moved logging to slog.Logger:** Originally this used a third party package for logging. Prefer an slog.Logger to allow logging packages to be swapped out.
 
 This re-write significantly benefited from the groundwork laid by the original package, making the process of deciphering the ARN API much easier.
+
+# Third Party Libraries
+
+This package uses the following third-party libraries:
+
+* github.com/go-json-experiment/json
+* github.com/google/uuid
+*	github.com/kylelemons/godebug
+
+These package have sub-dependencies as follows:
+
+* github.com/jedib0t/go-pretty/v6
+*	github.com/mattn/go-runewidth
+*	github.com/rivo/uniseg
+*	github.com/sanity-io/litter
+*	golang.org/x/net
+*	golang.org/x/sys
+*	golang.org/x/text
+
+# Trademarks
+
+Trademarks This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft trademarks or logos is subject to and must follow Microsoft’s Trademark & Brand Guidelines. Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship. Any use of third-party trademarks or logos are subject to those third-party’s policies.
