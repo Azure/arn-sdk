@@ -1,4 +1,4 @@
-module github.com/Azure/arn
+module github.com/Azure/arn-sdk
 
 go 1.22.4
 
