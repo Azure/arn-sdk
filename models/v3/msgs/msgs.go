@@ -8,14 +8,14 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/Azure/arn/internal/conn"
-	"github.com/Azure/arn/internal/conn/http"
-	"github.com/Azure/arn/internal/conn/maxvals"
-	"github.com/Azure/arn/internal/conn/storage"
-	"github.com/Azure/arn/models"
-	"github.com/Azure/arn/models/v3/schema/envelope"
-	"github.com/Azure/arn/models/v3/schema/types"
-	"github.com/Azure/arn/models/version"
+	"github.com/Azure/arn-sdk/internal/conn"
+	"github.com/Azure/arn-sdk/internal/conn/http"
+	"github.com/Azure/arn-sdk/internal/conn/maxvals"
+	"github.com/Azure/arn-sdk/internal/conn/storage"
+	"github.com/Azure/arn-sdk/models"
+	"github.com/Azure/arn-sdk/models/v3/schema/envelope"
+	"github.com/Azure/arn-sdk/models/v3/schema/types"
+	"github.com/Azure/arn-sdk/models/version"
 
 	"github.com/go-json-experiment/json"
 	"github.com/google/uuid"
@@ -154,7 +154,7 @@ func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) error {
 		return err
 	}
 	// Set the current API version for this model.
-	event.Data.APIVersion = apiVersion
+	event.Data.APIVersion = version.API2020
 
 	// As a producer, we have to set the status code for all Resources to OK.
 	for i, e := range event.Data.Resources {

@@ -3,7 +3,7 @@ package msgs
 import (
 	"slices"
 
-	"github.com/Azure/arn/models/v3/schema/types"
+	"github.com/Azure/arn-sdk/models/v3/schema/types"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 )
 

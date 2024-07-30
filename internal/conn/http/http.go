@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/Azure/arn/internal/build"
+	"github.com/Azure/arn-sdk/internal/build"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"

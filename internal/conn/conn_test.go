@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Azure/arn/internal/conn/http"
-	"github.com/Azure/arn/internal/conn/storage"
-	"github.com/Azure/arn/models"
+	"github.com/Azure/arn-sdk/internal/conn/http"
+	"github.com/Azure/arn-sdk/internal/conn/storage"
+	"github.com/Azure/arn-sdk/models"
 )
 
 type fakeNotify struct {

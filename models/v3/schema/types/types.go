@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/Azure/arn-sdk/models/version"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 )
 
@@ -60,7 +61,7 @@ type Data struct {
 	// RoutingType is set by ARN, do not populate as a publisher.
 	RoutingType string `json:"-"`
 	// APIVersion is the APIVersion in the format of "yyyy-MM-dd" follwed by an optional string like "-preview", "-privatepreview", etc.
-	APIVersion string `json:"apiVersion,omitzero"`
+	APIVersion version.API `json:"apiVersion,omitzero"`
 	// Resources is required for inline payload, only null if payload is in blob. While it
 	// is not directly emitted as JSON, we serialize this and store it in the Data field.
 	Resources []NotificationResource `json:"-"`
@@ -196,12 +197,9 @@ type ArmResource struct {
 // NewArmResource creates a new ArmResource. act is the activity that is being performed on the resource.
 // id is the resource ID. apiVer is the API version of the resource data schema. props is the properties of the resource.
 // See ArmResource for more details.
-func NewArmResource(act Activity, id *arm.ResourceID, apiVer string, props any) (ArmResource, error) {
+func NewArmResource(act Activity, id *arm.ResourceID, props any) (ArmResource, error) {
 	if id == nil {
 		return ArmResource{}, errors.New("resourceID is required")
-	}
-	if apiVer == "" {
-		return ArmResource{}, errors.New("apiVer is required")
 	}
 
 	r := ArmResource{
@@ -209,7 +207,7 @@ func NewArmResource(act Activity, id *arm.ResourceID, apiVer string, props any) 
 		Name:       id.Name,
 		Type:       id.ResourceType.String(),
 		Location:   id.Location,
-		APIVersion: apiVer,
+		APIVersion: string(version.API2020),
 		Properties: props,
 
 		arm: id,

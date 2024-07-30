@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/arn/models/version"
+	"github.com/Azure/arn-sdk/models/version"
 )
 
 func TestEventValidate(t *testing.T) {

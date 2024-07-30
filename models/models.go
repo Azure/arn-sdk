@@ -6,7 +6,7 @@ package models
 import (
 	"fmt"
 
-	"github.com/Azure/arn/models/internal/private"
+	"github.com/Azure/arn-sdk/models/internal/private"
 )
 
 var (

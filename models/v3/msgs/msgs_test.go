@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/arn/internal/conn/http"
-	"github.com/Azure/arn/internal/conn/storage"
-	"github.com/Azure/arn/models/v3/schema/envelope"
-	"github.com/Azure/arn/models/v3/schema/types"
-	"github.com/Azure/arn/models/version"
+	"github.com/Azure/arn-sdk/internal/conn/http"
+	"github.com/Azure/arn-sdk/internal/conn/storage"
+	"github.com/Azure/arn-sdk/models/v3/schema/envelope"
+	"github.com/Azure/arn-sdk/models/v3/schema/types"
+	"github.com/Azure/arn-sdk/models/version"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/go-json-experiment/json"
 	"github.com/google/uuid"
@@ -515,7 +515,7 @@ func TestNewEventMetaData(t *testing.T) {
 }
 
 func mustNewArm(act types.Activity, id *arm.ResourceID, apiVersion string, props any) types.ArmResource {
-	resc, err := types.NewArmResource(act, id, apiVersion, props)
+	resc, err := types.NewArmResource(act, id, props)
 	if err != nil {
 		panic(err)
 	}
