@@ -7,9 +7,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Azure/arn/internal/conn/http"
-	"github.com/Azure/arn/internal/conn/storage"
-	"github.com/Azure/arn/models"
+	"github.com/Azure/arn-sdk/internal/conn/http"
+	"github.com/Azure/arn-sdk/internal/conn/storage"
+	"github.com/Azure/arn-sdk/models"
 )
 
 // PromisePool is a pool of promises to use for notifications.

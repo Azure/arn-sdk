@@ -3,7 +3,7 @@ package msgs
 import (
 	"testing"
 
-	"github.com/Azure/arn/models/v3/schema/types"
+	"github.com/Azure/arn-sdk/models/v3/schema/types"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 )
 
@@ -99,11 +99,11 @@ func TestSubject(t *testing.T) {
 			t.Fatalf("TestSubject(%s): failed to parse resource ID %q: %v", test.name, test.b, err)
 		}
 
-		aarm, err := types.NewArmResource(types.ActDelete, a, "2021-10-4", nil)
+		aarm, err := types.NewArmResource(types.ActDelete, a, "2024-01-01", nil)
 		if err != nil {
 			panic(err)
 		}
-		barm, err := types.NewArmResource(types.ActDelete, b, "2021-10-4", nil)
+		barm, err := types.NewArmResource(types.ActDelete, b, "2024-01-01", nil)
 		if err != nil {
 			panic(err)
 		}

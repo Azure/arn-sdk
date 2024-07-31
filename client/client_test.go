@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Azure/arn/internal/conn"
-	"github.com/Azure/arn/internal/conn/http"
-	"github.com/Azure/arn/internal/conn/maxvals"
-	"github.com/Azure/arn/internal/conn/storage"
-	"github.com/Azure/arn/models"
+	"github.com/Azure/arn-sdk/internal/conn"
+	"github.com/Azure/arn-sdk/internal/conn/http"
+	"github.com/Azure/arn-sdk/internal/conn/maxvals"
+	"github.com/Azure/arn-sdk/internal/conn/storage"
+	"github.com/Azure/arn-sdk/models"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 )
 
@@ -18,12 +18,12 @@ func TestHTTPArgsValidate(t *testing.T) {
 
 	valid := HTTPArgs{
 		Endpoint: "http://localhost:8080",
-		Cred: struct{azcore.TokenCredential}{},
+		Cred:     struct{ azcore.TokenCredential }{},
 	}
 
 	tests := []struct {
-		name string
-		args func() HTTPArgs
+		name    string
+		args    func() HTTPArgs
 		wantErr bool
 	}{
 		{
@@ -72,12 +72,12 @@ func TestBlobArgs(t *testing.T) {
 
 	valid := BlobArgs{
 		Endpoint: "http://localhost:8080",
-		Cred: struct{azcore.TokenCredential}{},
+		Cred:     struct{ azcore.TokenCredential }{},
 	}
 
 	tests := []struct {
-		name string
-		args func() BlobArgs
+		name    string
+		args    func() BlobArgs
 		wantErr bool
 	}{
 		{
@@ -195,34 +195,34 @@ func TestNotify(t *testing.T) {
 	cancelCtx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	tests := []struct{
-		name string
-		ctx context.Context
-		n models.Notifications
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		n        models.Notifications
 		connSend func(n models.Notifications)
-		wantErr bool
+		wantErr  bool
 	}{
 		{
 			name: "Datacount is zero",
-			ctx: context.Background(),
-			n: newFakeNotify(nil, 0, false),
+			ctx:  context.Background(),
+			n:    newFakeNotify(nil, 0, false),
 		},
 		{
-			name: "Error: Datacount is > maxvals.NotificationItems",
-			ctx: context.Background(),
-			n: newFakeNotify(nil, maxvals.NotificationItems+1, false),
+			name:    "Error: Datacount is > maxvals.NotificationItems",
+			ctx:     context.Background(),
+			n:       newFakeNotify(nil, maxvals.NotificationItems+1, false),
 			wantErr: true,
 		},
 		{
-			name: "Error: context is cancelled",
-			ctx: cancelCtx,
-			n: newFakeNotify(nil, 1, false),
+			name:    "Error: context is cancelled",
+			ctx:     cancelCtx,
+			n:       newFakeNotify(nil, 1, false),
 			wantErr: true,
 		},
 		{
 			name: "Success",
-			ctx: context.Background(),
-			n: newFakeNotify(nil, 1, false),
+			ctx:  context.Background(),
+			n:    newFakeNotify(nil, 1, false),
 			connSend: func(n models.Notifications) {
 				n.SendPromise(nil, nil)
 			},
@@ -230,7 +230,11 @@ func TestNotify(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		a := &ARN{testConn: test.connSend, in: make(chan models.Notifications, 1)}
+		a := &ARN{
+			testConn:        test.connSend,
+			in:              make(chan models.Notifications, 1),
+			sigSenderClosed: make(chan struct{}),
+		}
 		go a.sender()
 		defer a.Close()
 
@@ -256,56 +260,56 @@ func TestAsync(t *testing.T) {
 
 	backup := make(chan error, 1)
 
-	tests := []struct{
-		name string
-		ctx context.Context
-		n models.Notifications
-		promise bool
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		n        models.Notifications
+		promise  bool
 		connSend func(n models.Notifications)
-		wantErr bool
+		wantErr  bool
 	}{
 		{
-			name: "Datacount is zero, promise",
-			ctx: context.Background(),
-			n: newFakeNotify(nil, 0, false),
+			name:    "Datacount is zero, promise",
+			ctx:     context.Background(),
+			n:       newFakeNotify(nil, 0, false),
 			promise: true,
 		},
 		{
 			name: "Datacount is zero, no promise",
-			ctx: context.Background(),
-			n: newFakeNotify(nil, 0, false),
+			ctx:  context.Background(),
+			n:    newFakeNotify(nil, 0, false),
 		},
 
 		{
-			name: "Error: Datacount is > maxvals.NotificationItems, promise",
-			ctx: context.Background(),
-			n: newFakeNotify(nil, maxvals.NotificationItems+1, false),
+			name:    "Error: Datacount is > maxvals.NotificationItems, promise",
+			ctx:     context.Background(),
+			n:       newFakeNotify(nil, maxvals.NotificationItems+1, false),
 			promise: true,
 			wantErr: true,
 		},
 		{
-			name: "Error: Datacount is > maxvals.NotificationItems, no promise",
-			ctx: context.Background(),
-			n: newFakeNotify(nil, maxvals.NotificationItems+1, false),
+			name:    "Error: Datacount is > maxvals.NotificationItems, no promise",
+			ctx:     context.Background(),
+			n:       newFakeNotify(nil, maxvals.NotificationItems+1, false),
 			wantErr: true,
 		},
 		{
-			name: "Error: context is cancelled, promise",
-			ctx: cancelCtx,
-			n: newFakeNotify(nil, 1, false),
+			name:    "Error: context is cancelled, promise",
+			ctx:     cancelCtx,
+			n:       newFakeNotify(nil, 1, false),
 			promise: true,
 			wantErr: true,
 		},
 		{
-			name: "Error: context is cancelled, no promise",
-			ctx: cancelCtx,
-			n: newFakeNotify(nil, 1, false),
+			name:    "Error: context is cancelled, no promise",
+			ctx:     cancelCtx,
+			n:       newFakeNotify(nil, 1, false),
 			wantErr: true,
 		},
 		{
-			name: "Success promise",
-			ctx: context.Background(),
-			n: newFakeNotify(nil, 1, false),
+			name:    "Success promise",
+			ctx:     context.Background(),
+			n:       newFakeNotify(nil, 1, false),
 			promise: true,
 			connSend: func(n models.Notifications) {
 				n.SendPromise(nil, nil)
@@ -313,8 +317,8 @@ func TestAsync(t *testing.T) {
 		},
 		{
 			name: "Success no promise",
-			ctx: context.Background(),
-			n: newFakeNotify(nil, 1, false),
+			ctx:  context.Background(),
+			n:    newFakeNotify(nil, 1, false),
 			connSend: func(n models.Notifications) {
 				n.SendPromise(nil, backup)
 			},
@@ -323,9 +327,10 @@ func TestAsync(t *testing.T) {
 
 	for _, test := range tests {
 		a := &ARN{
-			testConn: test.connSend,
-			in: make(chan models.Notifications, 1),
-			errs: backup,
+			testConn:        test.connSend,
+			in:              make(chan models.Notifications, 1),
+			errs:            backup,
+			sigSenderClosed: make(chan struct{}),
 		}
 		go a.sender()
 		defer a.Close()

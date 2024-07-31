@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Azure/arn/models/v3/schema/types"
-	"github.com/Azure/arn/models/version"
+	"github.com/Azure/arn-sdk/models/v3/schema/types"
+	"github.com/Azure/arn-sdk/models/version"
 )
 
 // Event is the event being sent to the ARN service.

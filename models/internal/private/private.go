@@ -4,9 +4,9 @@ package private
 import (
 	"context"
 
-	"github.com/Azure/arn/internal/conn/http"
-	"github.com/Azure/arn/internal/conn/storage"
-	"github.com/Azure/arn/models/version"
+	"github.com/Azure/arn-sdk/internal/conn/http"
+	"github.com/Azure/arn-sdk/internal/conn/storage"
+	"github.com/Azure/arn-sdk/models/version"
 )
 
 // Notifications is the interface that must be implemented by all notification types across models.
