@@ -195,6 +195,7 @@ func TestSendEvent(t *testing.T) {
 
 	goodNotifyResrc := types.NotificationResource{
 		ResourceID: uuid.New().String(),
+		APIVersion: "2024-01-01",
 		ResourceSystemProperties: types.ResourceSystemProperties{
 			ChangeAction: types.CADelete,
 		},
@@ -515,7 +516,7 @@ func TestNewEventMetaData(t *testing.T) {
 }
 
 func mustNewArm(act types.Activity, id *arm.ResourceID, apiVersion string, props any) types.ArmResource {
-	resc, err := types.NewArmResource(act, id, props)
+	resc, err := types.NewArmResource(act, id, "2024-01-01", props)
 	if err != nil {
 		panic(err)
 	}

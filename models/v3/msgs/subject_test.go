@@ -99,11 +99,11 @@ func TestSubject(t *testing.T) {
 			t.Fatalf("TestSubject(%s): failed to parse resource ID %q: %v", test.name, test.b, err)
 		}
 
-		aarm, err := types.NewArmResource(types.ActDelete, a, nil)
+		aarm, err := types.NewArmResource(types.ActDelete, a, "2024-01-01", nil)
 		if err != nil {
 			panic(err)
 		}
-		barm, err := types.NewArmResource(types.ActDelete, b, nil)
+		barm, err := types.NewArmResource(types.ActDelete, b, "2024-01-01", nil)
 		if err != nil {
 			panic(err)
 		}

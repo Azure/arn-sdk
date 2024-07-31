@@ -110,14 +110,14 @@ Example - boilerplate that is needed on AKS to make ARN connections:
 
 Example - sending a notification synchronously using the v3 model using a AKS node event:
 
-	// Note: n is a Node object
-	// Note: rscID is the *arm.ResourceID of the node
+	// Note: node is a k8 Node object that is JSON serializable
+	// Note: rscID is the *arm.ResourceID of the node, which is created with  github.com/Azure/azure-sdk-for-go/sdk/azcore/arm.ParseResourceID()
 	// You can get a rescID with arm.ParseResourceID(path.Join(p.rescPrefix, suffix))
 	// where rescPrefix looks like: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test/providers/Microsoft.ContainerService/managedClusters/something/
 	// and suffix is something like: nodes/aks-nodepool1-12345678-vmss000000
 	// Suffix is negotiated with the ARN team.
 
-	armRsc, err := NewArmResource(types.ActSnapshot, rscID, "2020-05-01", nil)
+	armRsc, err := NewArmResource(types.ActSnapshot, rscID, "2024-01-01", nil)
 	if err != nil {
 		return err
 	}
@@ -125,6 +125,7 @@ Example - sending a notification synchronously using the v3 model using a AKS no
 	notification := msgs.Notification{
 		ResourceLocation: "eastus",
 		PublisherInfo: "",
+		APIVersion: "2024-01-01",
 		Data: []types.NotificationResource{
 			{
 				Data: node, // This is the Node object that will be serialized to JSON.

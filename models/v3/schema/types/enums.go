@@ -125,3 +125,35 @@ func init() {
 		}
 	}
 }
+
+//go:generate stringer -type=DataBoundary -linecomment
+
+// DataBoundary is the boundary of the data that is being processed.
+type DataBoundary uint8
+
+const (
+	DBUnknown DataBoundary = 0 // ""
+	// DataBoundary is the whole world.
+	DBGlobal DataBoundary = 1 // "global"
+	// DataBoundary is select locations in the EU.
+	DBEU DataBoundary = 2 // "eu"
+)
+
+// MarshalJSON marshals the value to its JSON string. This uses an
+// unsafe conversion to avoid allocations. Do not change the []byte that is returned.
+func (d DataBoundary) MarshalJSON() ([]byte, error) {
+	s := d.String()
+	return unsafe.Slice(unsafe.StringData(s), len(s)), nil
+}
+
+// Runtime check on startup to ensure that the enums can be marshaled to JSON.
+// This can break if the line comment for the enum is incorrect.
+func init() {
+	for i := 0; i < len(_DataBoundary_index)-1; i++ {
+		v := DataBoundary(i)
+		_, err := json.Marshal(struct{ DataBoundary DataBoundary }{DataBoundary: v})
+		if err != nil {
+			panic(err)
+		}
+	}
+}

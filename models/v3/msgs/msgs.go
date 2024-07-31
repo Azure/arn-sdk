@@ -142,7 +142,6 @@ func (n Notifications) dataToJSON() ([]byte, error) {
 // SendEvent converts the notification to an event and sends it to the ARN service.
 // Do not call this function directly, use methods on the Client instead.
 func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) error {
-	const apiVersion = "2020-05-01"
 
 	if len(n.Data) == 0 {
 		return errors.New("no data to send")
@@ -153,8 +152,6 @@ func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) error {
 	if err != nil {
 		return err
 	}
-	// Set the current API version for this model.
-	event.Data.APIVersion = version.API2020
 
 	// As a producer, we have to set the status code for all Resources to OK.
 	for i, e := range event.Data.Resources {

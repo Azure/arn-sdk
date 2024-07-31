@@ -21,7 +21,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/Azure/arn-sdk/models/version"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 )
 
@@ -61,13 +60,16 @@ type Data struct {
 	// RoutingType is set by ARN, do not populate as a publisher.
 	RoutingType string `json:"-"`
 	// APIVersion is the APIVersion in the format of "yyyy-MM-dd" follwed by an optional string like "-preview", "-privatepreview", etc.
-	APIVersion version.API `json:"apiVersion,omitzero"`
+	// This is optional, however, if not set here, must be set on
+	APIVersion string `json:"apiVersion,omitzero"`
 	// Resources is required for inline payload, only null if payload is in blob. While it
 	// is not directly emitted as JSON, we serialize this and store it in the Data field.
 	Resources []NotificationResource `json:"-"`
 	// ResourcesContainer details if the resources are inline or in a blob.
 	// This is either RCInline or RCBlob.
 	ResourcesContainer ResourcesContainer `json:"resourcesContainer,omitzero"`
+	// DataBoundary is the boundary for the resources included in the notification.
+	DataBoundary string `json:"dataBoundary,omitzero"`
 }
 
 // Validate validates the data.
@@ -85,12 +87,43 @@ func (d Data) Validate() error {
 		if len(d.Resources) == 0 {
 			return errors.New(".Resources is required when ResourcesContainer is Inline")
 		}
+
+		rscAPIVersion := ""
 		for i, r := range d.Resources {
 			if err := r.Validate(); err != nil {
 				return fmt.Errorf(".Resources[%d]%w", i, err)
 			}
+
+			if i == 0 {
+				rscAPIVersion = r.APIVersion
+			}
+
+			// If APIVersion is not set, it must be set on all resources.
+			if d.APIVersion == "" {
+				if r.APIVersion == "" {
+					return errors.New("NotificationResource.APIVersion is required when not set on Data")
+				}
+			} else {
+				// If it is set on Data, it must match on all resources or they must be empty.
+				if d.APIVersion != r.APIVersion && r.APIVersion != "" {
+					return errors.New("NotificationResource.APIVersion must match Data.APIVersion if set")
+				}
+			}
+
+			if rscAPIVersion != r.APIVersion {
+				return errors.New("all resources must have the same APIVersion")
+			}
+
+			if rscAPIVersion != "" {
+				if r.ArmResource.APIVersion != rscAPIVersion {
+					return errors.New("all resources must have the same APIVersion and ArmResource.APIVersion must match")
+				} else if r.ArmResource.APIVersion != r.APIVersion {
+					return errors.New("all resources must have the same APIVersion and ArmResource.APIVersion must match")
+				}
+			}
 		}
 	}
+
 	return nil
 }
 
@@ -125,12 +158,15 @@ type NotificationResource struct {
 	// ArmResource is the ARM resource. This is where your specific resource data is stored.
 	// Resource payload. For delete events all object properties other than id will be missing.
 	ArmResource ArmResource `json:"armResource,omitzero"`
-	// AdditionalResourceProperties is a dictionary of additional resource metadata. Any values stored
-	// must be JSON serializable.
-	AdditionalResourceProperties map[string]any `json:"additionalResourceProperties,omitzero"`
+	// AdditionalResourceProperties is a dictionary of additional resource metadata.
+	AdditionalResourceProperties map[string]string `json:"additionalResourceProperties,omitzero"`
 	// ResourceID is the ARM resource ID.
 	// This is in the form of "="/subscriptions/{subId}/resourceGroups/{rgName}/providers/{providerNamespace}/{resourceType}/{resourceName}".
 	ResourceID string `json:"resourceId"`
+	// APIVersion is the version of the resource schema used to encode the resource payload in armResource.
+	// APIVersion in the format of "yyyy-MM-dd" follwed by an optional string like "-preview", "-privatepreview", etc.
+	// When not specified here it must be specified in NotificationDataV3.
+	APIVersion string `json:"apiVersion,omitzero"`
 	// SourceResourceID has the resource ID of the source resource for the move event.
 	SourceResourceID string `json:"sourceResourceId,omitzero"`
 	// CorrelationID is the correlation identifier associated with the operation that resulted in the activity
@@ -139,9 +175,16 @@ type NotificationResource struct {
 	// StatusCode is the HTTP status code of the operation. As a producer, this is always "OK" set by StatusCode constant.
 	// This is automatically set.
 	StatusCode string `json:"statusCode,omitzero"` // "OK" or "BADRequest"
+	// HomeTenantID is the tenant ID of the home tenant of the resource.
+	// This is optional except for provider scoped resources. It can also be specified
+	// at the Data level. If so, these should match.
+	HomeTenantID string `json:"homeTenantId,omitzero"`
+	// ResourceHomeTenantID is an optiona field with no definition.
+	ResourceHomeTenantID string `json:"resourceHomeTenantId,omitzero"`
 	// ResourceSystemProperties provides details about the change action, who created and modified the resource, and when.
-	ResourceSystemProperties ResourceSystemProperties `json:"resourceSystemProperties,omitzero"` // optional
-
+	ResourceSystemProperties ResourceSystemProperties `json:"resourceSystemProperties,omitzero"`
+	// OperationalInfo is operational information for this resource.
+	OperationalInfo OperationalInfo `json:"operationalInfo,omitzero"`
 }
 
 // Validate validates the NotificationResource.
@@ -197,7 +240,7 @@ type ArmResource struct {
 // NewArmResource creates a new ArmResource. act is the activity that is being performed on the resource.
 // id is the resource ID. apiVer is the API version of the resource data schema. props is the properties of the resource.
 // See ArmResource for more details.
-func NewArmResource(act Activity, id *arm.ResourceID, props any) (ArmResource, error) {
+func NewArmResource(act Activity, id *arm.ResourceID, apiVersion string, props any) (ArmResource, error) {
 	if id == nil {
 		return ArmResource{}, errors.New("resourceID is required")
 	}
@@ -207,7 +250,7 @@ func NewArmResource(act Activity, id *arm.ResourceID, props any) (ArmResource, e
 		Name:       id.Name,
 		Type:       id.ResourceType.String(),
 		Location:   id.Location,
-		APIVersion: string(version.API2020),
+		APIVersion: apiVersion,
 		Properties: props,
 
 		arm: id,
@@ -272,3 +315,7 @@ func (r ResourceSystemProperties) Validate() error {
 	}
 	return nil
 }
+
+// OperationalInfo is operational information for this resource. It is defined in the schema
+// but has no definition.
+type OperationalInfo struct{}
