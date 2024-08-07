@@ -18,6 +18,14 @@ Key changes and improvements in this package include:
 - **Fixes constant value address issuess:** The original package defined some constants for enumermated values, but the SDK required the address of these constants. This required redefining the constants as variables to get their address. This fixes that issue.
 - **Moved logging to slog.Logger:** Originally this used a third party package for logging. Prefer an slog.Logger to allow logging packages to be swapped out.
 
+Removed features:
+
+- **Deletion of storage containers:** The original package had a feature to delete storage containers.
+However this feature would have several clients that share the same storage calling deletes.
+This seemed inefficient and potentially dangerous, so it was removed. Instead we opt for the user
+to set storage containers to be deleted in the storage account. One reason this was probably done is
+that Azure Blob Storage can only delete on a daily period, where we should have at least hourly granularity.
+
 This re-write significantly benefited from the groundwork laid by the original package, making the process of deciphering the ARN API much easier.
 
 # Third Party Libraries
