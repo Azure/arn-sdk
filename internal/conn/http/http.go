@@ -7,7 +7,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"path"
 	"sync"
 
 	"github.com/Azure/arn-sdk/internal/build"
@@ -73,6 +75,10 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 		return nil, err
 	}
 
+	if path.Dir(endpoint) != "arnnotify" {
+		endpoint = runtime.JoinPaths(endpoint, "/arnnotify")
+	}
+
 	return &Client{
 		endpoint: endpoint,
 		client:   azclient,
@@ -81,7 +87,6 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 
 // Send sends an event (converted to JSON bytes) to the ARN receiver API.
 func (c *Client) Send(ctx context.Context, event []byte) error {
-
 	req, err := c.setup(ctx, event)
 	if err != nil {
 		return err
@@ -98,6 +103,20 @@ func (c *Client) Send(ctx context.Context, event []byte) error {
 	return nil
 }
 
+/*
+	urlPath := "/arnnotify"
+	req, err := runtime.NewRequest(ctx, http.MethodPost, runtime.JoinPaths(client.endpoint, urlPath))
+	if err != nil {
+		return nil, err
+	}
+	req.Raw().Header["Accept"] = []string{"application/json"}
+	if err := runtime.MarshalAsJSON(req, eventdata); err != nil {
+		return nil, err
+	}
+*/
+
+var appJSON = []string{"application/json"}
+
 // setup creates a new request with the event as the body.
 func (c *Client) setup(ctx context.Context, event []byte) (*policy.Request, error) {
 	if len(event) == 0 {
@@ -109,12 +128,14 @@ func (c *Client) setup(ctx context.Context, event []byte) (*policy.Request, erro
 	read.Reset(event)
 	r := rsc{read}
 
+	log.Println("sending to endpoint:", c.endpoint)
 	req, err := runtime.NewRequest(ctx, http.MethodPost, c.endpoint)
 	if err != nil {
 		return nil, err
 	}
+	req.Raw().Header["Accept"] = appJSON
 	req.SetBody(r, "application/json")
-	return req, nil
+	return req, req.SetBody(r, "application/json")
 }
 
 // Compile-time check to verify implements interface.
