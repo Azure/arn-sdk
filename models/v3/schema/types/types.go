@@ -156,7 +156,8 @@ type NotificationResource struct {
 	// ResourceEventTime is the time of the resource event.
 	ResourceEventTime time.Time `json:"resourceEventTime,omitzero" format:"RFC3339"`
 	// ArmResource is the ARM resource. This is where your specific resource data is stored.
-	// Resource payload. For delete events all object properties other than id will be missing.
+	// While it says Arm, it can be other resource types.
+	// For delete events all object properties other than id will be missing.
 	ArmResource ArmResource `json:"armResource,omitzero"`
 	// AdditionalResourceProperties is a dictionary of additional resource metadata.
 	AdditionalResourceProperties map[string]string `json:"additionalResourceProperties,omitzero"`
@@ -217,9 +218,9 @@ func (n NotificationResource) Validate() error {
 // Field-aligned.
 type ArmResource struct {
 	// Properties is the properties of the resource. This must serialize to a JSON dictionary that
-	// stores the properties of the resource. Aka, this is where your specialized meta data describing
-	// the resource goes, if any exists. This can be nil if the Activity that is being performed
-	// is a delete.
+	// stores the properties of the resource. This is where your specific resource data is stored.
+	// This can be nil if the Activity that is being performed is a delete.
+	// If we were storing AKS node data for this event, this would be the node data.
 	Properties any `json:"properties,omitzero"`
 	// Name is the name of the resource. This is the last segment of the resource ID.
 	Name string `json:"name,omitzero"`

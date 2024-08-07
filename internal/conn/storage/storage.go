@@ -117,6 +117,7 @@ func New(endpoint string, cred azcore.TokenCredential, options ...Option) (*Clie
 	if err != nil {
 		return nil, err
 	}
+	client.cli = sClient
 
 	// TODO: We need to check if the storage containers delete themselves after a certain period of time.
 	// If not fail.
