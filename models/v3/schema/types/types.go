@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -132,14 +131,14 @@ func (d Data) Validate() error {
 type ResourcesBlobInfo struct {
 	// BlobURI is the the Blob uri with SAS (shared access signature) for the reader to
 	// be able to have access to download the data and parse into NotificationResourceData objects.
-	BlobURI *url.URL `json:"blobUri"`
+	BlobURI string `json:"blobUri"`
 	// BlobSize is the size in bytes of the blob payload content.
 	BlobSize int64 `json:"blobSize"`
 }
 
 // Validate validates the ResourcesBlobInfo.
 func (r *ResourcesBlobInfo) Validate() error {
-	if r.BlobURI == nil {
+	if r.BlobURI == "" {
 		return errors.New(".ResourcesBlobInfo.BlobURI is required")
 	}
 	if r.BlobSize == 0 {
