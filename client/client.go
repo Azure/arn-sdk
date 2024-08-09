@@ -124,7 +124,7 @@ Example - sending a notification synchronously using the v3 model using a AKS no
 
 	notification := msgs.Notification{
 		ResourceLocation: "eastus",
-		PublisherInfo: "",
+		PublisherInfo: "Microsoft.ContainerService",
 		APIVersion: "2024-01-01",
 		Data: []types.NotificationResource{
 			{
