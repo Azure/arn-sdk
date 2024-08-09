@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"path"
 	"sync"
@@ -128,7 +127,6 @@ func (c *Client) setup(ctx context.Context, event []byte) (*policy.Request, erro
 	read.Reset(event)
 	r := rsc{read}
 
-	log.Println("sending to endpoint:", c.endpoint)
 	req, err := runtime.NewRequest(ctx, http.MethodPost, c.endpoint)
 	if err != nil {
 		return nil, err
