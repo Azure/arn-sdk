@@ -114,6 +114,8 @@ func (c *Client) Send(ctx context.Context, event []byte) error {
 	}
 */
 
+// appJSON is the Accept header for application/json. Set as a package
+// variable to avoid allocations.
 var appJSON = []string{"application/json"}
 
 // setup creates a new request with the event as the body.
@@ -132,7 +134,6 @@ func (c *Client) setup(ctx context.Context, event []byte) (*policy.Request, erro
 		return nil, err
 	}
 	req.Raw().Header["Accept"] = appJSON
-	req.SetBody(r, "application/json")
 	return req, req.SetBody(r, "application/json")
 }
 
