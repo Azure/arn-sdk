@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"path"
 	"sync"
@@ -103,18 +102,8 @@ func (c *Client) Send(ctx context.Context, event []byte) error {
 	return nil
 }
 
-/*
-	urlPath := "/arnnotify"
-	req, err := runtime.NewRequest(ctx, http.MethodPost, runtime.JoinPaths(client.endpoint, urlPath))
-	if err != nil {
-		return nil, err
-	}
-	req.Raw().Header["Accept"] = []string{"application/json"}
-	if err := runtime.MarshalAsJSON(req, eventdata); err != nil {
-		return nil, err
-	}
-*/
-
+// appJSON is the Accept header for application/json. Set as a package
+// variable to avoid allocations.
 var appJSON = []string{"application/json"}
 
 // setup creates a new request with the event as the body.
@@ -128,13 +117,11 @@ func (c *Client) setup(ctx context.Context, event []byte) (*policy.Request, erro
 	read.Reset(event)
 	r := rsc{read}
 
-	log.Println("sending to endpoint:", c.endpoint)
 	req, err := runtime.NewRequest(ctx, http.MethodPost, c.endpoint)
 	if err != nil {
 		return nil, err
 	}
 	req.Raw().Header["Accept"] = appJSON
-	req.SetBody(r, "application/json")
 	return req, req.SetBody(r, "application/json")
 }
 
