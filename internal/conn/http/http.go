@@ -102,18 +102,6 @@ func (c *Client) Send(ctx context.Context, event []byte) error {
 	return nil
 }
 
-/*
-	urlPath := "/arnnotify"
-	req, err := runtime.NewRequest(ctx, http.MethodPost, runtime.JoinPaths(client.endpoint, urlPath))
-	if err != nil {
-		return nil, err
-	}
-	req.Raw().Header["Accept"] = []string{"application/json"}
-	if err := runtime.MarshalAsJSON(req, eventdata); err != nil {
-		return nil, err
-	}
-*/
-
 // appJSON is the Accept header for application/json. Set as a package
 // variable to avoid allocations.
 var appJSON = []string{"application/json"}
