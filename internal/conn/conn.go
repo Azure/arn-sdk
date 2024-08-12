@@ -6,10 +6,12 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/Azure/arn-sdk/internal/conn/http"
 	"github.com/Azure/arn-sdk/internal/conn/storage"
 	"github.com/Azure/arn-sdk/models"
+	"github.com/Azure/arn-sdk/models/v3/metrics"
 )
 
 // PromisePool is a pool of promises to use for notifications.
@@ -104,10 +106,15 @@ func (s *Service) Send(notify models.Notifications) {
 // sender sends notifications to the ARN service.
 func (s *Service) sender() {
 	for n := range s.in {
+		started := time.Now()
 		if err := n.SendEvent(s.http, s.store); err != nil {
+			metrics.IncSendMessageFailureCount()
+			metrics.RecordSendMessageLatency(time.Since(started))
 			n.SendPromise(err, s.clientErrs)
 			continue
 		}
+		metrics.IncSendMessageSuccessCount()
+		metrics.RecordSendMessageLatency(time.Since(started))
 		n.SendPromise(nil, s.clientErrs)
 	}
 }
