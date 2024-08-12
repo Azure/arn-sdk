@@ -34,26 +34,24 @@ func Init(reg prom.Registerer) {
 }
 
 // IncSendMessageSuccessCount increases the MessageSentCount metric with success == true
-func IncSendMessageSuccessCount() {
+func RecordSendMessageSuccess(elapsed time.Duration) {
 	messageSentCount.With(
 		prom.Labels{
 			successLabel: "true",
 		}).Inc()
+	messageSentLatency.WithLabelValues().Observe(elapsed.Seconds())
 }
 
 // IncSendMessageFailureCount increases the MessageSentCount metric with success == false
-func IncSendMessageFailureCount() {
+func RecordSendMessageFailure(elapsed time.Duration) {
 	messageSentCount.With(
 		prom.Labels{
 			successLabel: "false",
 		}).Inc()
-}
-
-// RecordSendMessageLatency increases the MessageSentCount metric with success == false
-func RecordSendMessageLatency(elapsed time.Duration) {
 	messageSentLatency.WithLabelValues().Observe(elapsed.Seconds())
 }
 
-func ResetSendMessageCount() {
+func Reset() {
 	messageSentCount.Reset()
+	messageSentLatency.Reset()
 }

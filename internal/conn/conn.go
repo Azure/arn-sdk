@@ -108,13 +108,11 @@ func (s *Service) sender() {
 	for n := range s.in {
 		started := time.Now()
 		if err := n.SendEvent(s.http, s.store); err != nil {
-			metrics.IncSendMessageFailureCount()
-			metrics.RecordSendMessageLatency(time.Since(started))
+			metrics.RecordSendMessageFailure(time.Since(started))
 			n.SendPromise(err, s.clientErrs)
 			continue
 		}
-		metrics.IncSendMessageSuccessCount()
-		metrics.RecordSendMessageLatency(time.Since(started))
+		metrics.RecordSendMessageSuccess(time.Since(started))
 		n.SendPromise(nil, s.clientErrs)
 	}
 }
