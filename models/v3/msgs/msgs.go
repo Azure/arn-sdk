@@ -145,10 +145,11 @@ func (n Notifications) dataToJSON() ([]byte, error) {
 func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (reterr error) {
 	started := time.Now()
 	defer func() {
+		elapsed := time.Since(started)
 		if reterr != nil {
-			metrics.RecordSendMessageFailure(time.Since(started))
+			metrics.RecordSendMessageFailure(elapsed)
 		}
-		metrics.RecordSendMessageSuccess(time.Since(started))
+		metrics.RecordSendMessageSuccess(elapsed)
 	}()
 
 	if len(n.Data) == 0 {

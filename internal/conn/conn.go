@@ -6,12 +6,10 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/Azure/arn-sdk/internal/conn/http"
 	"github.com/Azure/arn-sdk/internal/conn/storage"
 	"github.com/Azure/arn-sdk/models"
-	"github.com/Azure/arn-sdk/models/v3/metrics"
 )
 
 // PromisePool is a pool of promises to use for notifications.
