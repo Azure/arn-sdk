@@ -15,6 +15,7 @@ import (
 	"github.com/Azure/arn-sdk/models"
 	"github.com/Azure/arn-sdk/models/v3/schema/envelope"
 	"github.com/Azure/arn-sdk/models/v3/schema/types"
+	"github.com/Azure/arn-sdk/models/v3/metrics"
 	"github.com/Azure/arn-sdk/models/version"
 
 	"github.com/go-json-experiment/json"
@@ -141,7 +142,15 @@ func (n Notifications) dataToJSON() ([]byte, error) {
 
 // SendEvent converts the notification to an event and sends it to the ARN service.
 // Do not call this function directly, use methods on the Client instead.
-func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) error {
+func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (reterr error) {
+	started := time.Now()
+	defer func() {
+		if reterr != nil {
+			metrics.RecordSendMessageFailure(time.Since(started))
+		}
+		metrics.RecordSendMessageSuccess(time.Since(started))
+	}()
+
 	if len(n.Data) == 0 {
 		return errors.New("no data to send")
 	}

@@ -106,13 +106,10 @@ func (s *Service) Send(notify models.Notifications) {
 // sender sends notifications to the ARN service.
 func (s *Service) sender() {
 	for n := range s.in {
-		started := time.Now()
 		if err := n.SendEvent(s.http, s.store); err != nil {
-			metrics.RecordSendMessageFailure(time.Since(started))
 			n.SendPromise(err, s.clientErrs)
 			continue
 		}
-		metrics.RecordSendMessageSuccess(time.Since(started))
 		n.SendPromise(nil, s.clientErrs)
 	}
 }
