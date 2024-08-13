@@ -30,6 +30,7 @@ var (
 func Init(reg prom.Registerer) {
 	reg.MustRegister(
 		eventSentCount,
+		eventSentLatency,
 	)
 }
 
