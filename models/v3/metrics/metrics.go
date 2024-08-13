@@ -33,7 +33,8 @@ func Init(reg prom.Registerer) {
 	)
 }
 
-// IncSendEventSuccessCount increases the eventSentCount metric with success == true
+// RecordSendEventSuccess increases the eventSentCount metric with success == true
+// and records the latency
 func RecordSendEventSuccess(elapsed time.Duration) {
 	eventSentCount.With(
 		prom.Labels{
@@ -42,7 +43,8 @@ func RecordSendEventSuccess(elapsed time.Duration) {
 	eventSentLatency.WithLabelValues().Observe(elapsed.Seconds())
 }
 
-// IncSendEventFailureCount increases the eventSentCount metric with success == false
+// RecordSendEventFailure increases the eventSentCount metric with success == false
+// and records the latency
 func RecordSendEventFailure(elapsed time.Duration) {
 	eventSentCount.With(
 		prom.Labels{
@@ -51,6 +53,7 @@ func RecordSendEventFailure(elapsed time.Duration) {
 	eventSentLatency.WithLabelValues().Observe(elapsed.Seconds())
 }
 
+// Reset resets the metrics
 func Reset() {
 	eventSentCount.Reset()
 	eventSentLatency.Reset()
