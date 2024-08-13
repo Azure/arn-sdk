@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	subsystem      = "arn_sdk"
+	subsystem      = "arn"
 	successLabel   = "success"
 )
 
