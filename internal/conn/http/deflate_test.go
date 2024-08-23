@@ -102,7 +102,7 @@ func TestDeflate(t *testing.T) {
 
 	plOpts := runtime.PipelineOptions{
 		PerRetry: []policy.Policy{
-			newFlatTransport(),
+			newFlateTransport(),
 		},
 	}
 	azclient, err := azcore.NewClient("arn.Client", build.Version, plOpts, &policy.ClientOptions{})

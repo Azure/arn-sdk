@@ -236,7 +236,12 @@ func (a Args) toClients() (*http.Client, *storage.Client, error) {
 		return nil, nil, err
 	}
 
-	httpClient, err := http.New(a.HTTP.Endpoint, a.HTTP.Cred, a.HTTP.Opts)
+	httpOpts := []http.Option{}
+	if !a.HTTP.Compression {
+		httpOpts = append(httpOpts, http.WithoutCompression())
+	}
+
+	httpClient, err := http.New(a.HTTP.Endpoint, a.HTTP.Cred, a.HTTP.Opts, httpOpts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
@@ -279,6 +284,8 @@ type HTTPArgs struct {
 	Cred azcore.TokenCredential
 	// Opts are opttions for the azcore HTTP client.
 	Opts *policy.ClientOptions
+	// Compression is a flag to enable deflate compression on the HTTP client.
+	Compression bool
 }
 
 func (a HTTPArgs) validate() error {
