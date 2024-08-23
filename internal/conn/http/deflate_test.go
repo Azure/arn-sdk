@@ -6,9 +6,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,13 +28,15 @@ type flateData struct {
 }
 
 type httpHandler struct {
-	results []flateData
+	results        []flateData
+	countA, countB atomic.Int32
 }
 
 // handleDeflateRequest is an HTTP handler that processes requests with deflate-encoded bodies.
 func (h *httpHandler) handleDeflateRequest(w http.ResponseWriter, r *http.Request) {
 	// Check if the Content-Encoding is deflate
 	if r.Header.Get("Content-Encoding") == "deflate" {
+		h.countA.Add(1)
 		// Wrap the request body in a flate.Reader to decompress it
 		deflateReader := flate.NewReader(r.Body)
 		defer deflateReader.Close()
@@ -42,26 +44,23 @@ func (h *httpHandler) handleDeflateRequest(w http.ResponseWriter, r *http.Reques
 		// Read the decompressed data
 		decompressedBody, err := io.ReadAll(deflateReader)
 		if err != nil {
-			http.Error(w, "Failed to read deflated body", http.StatusBadRequest)
-			log.Println(err)
-			return
+			panic(err)
 		}
 
 		var f flateData
 		if err := json.Unmarshal(decompressedBody, &f); err != nil {
-			http.Error(w, "Failed to unmarshal deflated body", http.StatusBadRequest)
-			log.Println(err)
-			return
+			panic(err)
 		}
 
 		h.results[f.Num] = f
 
 		// Send a response
 		w.Write([]byte("Successfully processed deflated request"))
-	} else {
-		// If not deflate-encoded, handle normally
-		w.Write([]byte("Request is not deflate-encoded"))
+		return
 	}
+	h.countB.Add(1)
+	// If not deflate-encoded, handle normally
+	w.Write([]byte("Request is not deflate-encoded"))
 }
 
 func TestDeflate(t *testing.T) {
@@ -81,8 +80,9 @@ func TestDeflate(t *testing.T) {
 		}
 		data = append(data, d)
 	}
+	data = append(data, flateData{})
 
-	handler := &httpHandler{results: make([]flateData, len(data))}
+	handler := &httpHandler{results: make([]flateData, len(data)-1)}
 	// Set up the HTTP route
 	http.HandleFunc("/deflate", handler.handleDeflateRequest)
 
@@ -123,9 +123,13 @@ func TestDeflate(t *testing.T) {
 		wg.Go(
 			context.Background(),
 			func(ctx context.Context) error {
-				b, err := json.Marshal(d)
-				if err != nil {
-					return err
+				var b []byte
+				if d.ID != "" {
+					var err error
+					b, err = json.Marshal(d)
+					if err != nil {
+						return err
+					}
 				}
 
 				req, err := runtime.NewRequest(context.Background(), http.MethodPost, endpoint)
@@ -152,13 +156,13 @@ func TestDeflate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(handler.results) != len(data) {
-		t.Fatalf("TestDeflate: expected %d results, got %d", len(data), len(handler.results))
+	if len(handler.results) != len(data)-1 {
+		t.Fatalf("TestDeflate: expected %d results, got %d", len(data)-1, len(handler.results))
 	}
 
-	for _, result := range handler.results {
+	for i, result := range handler.results {
 		if result.ID != data[result.Num].ID {
-			t.Fatalf("TestDeflate: expected ID %s, got %s", data[result.Num].ID, result.ID)
+			t.Fatalf("TestDeflate: for result(%d): expected ID %s, got %s", i, data[result.Num].ID, result.ID)
 		}
 	}
 }
