@@ -60,7 +60,7 @@ type flateTransport struct {
 	flatePool    chan *flate.Writer
 }
 
-func newFlatTransport() *flateTransport {
+func newFlateTransport() *flateTransport {
 	return &flateTransport{
 		flatePool: make(chan *flate.Writer, 20),
 	}
@@ -121,12 +121,34 @@ func (t *flateTransport) Do(req *policy.Request) (*http.Response, error) {
 type Client struct {
 	endpoint string
 	client   *azcore.Client
+	compress bool
+}
+
+// Option is a function that configures the client.
+type Option func(*Client) error
+
+// WihtoutCompression turns off deflate compression for the client.
+func WithoutCompression() Option {
+	return func(c *Client) error {
+		c.compress = false
+		return nil
+	}
 }
 
 // New returns a new Client for accessing the ARN receiver API.
-func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOptions) (*Client, error) {
+func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOptions, options ...Option) (*Client, error) {
 	if opts == nil {
 		opts = &policy.ClientOptions{}
+	}
+
+	c := &Client{
+		endpoint: endpoint,
+		compress: true,
+	}
+	for _, option := range options {
+		if err := option(c); err != nil {
+			return nil, err
+		}
 	}
 
 	var scope = scopeDefault
@@ -137,9 +159,12 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 	plOpts := runtime.PipelineOptions{
 		PerRetry: []policy.Policy{
 			runtime.NewBearerTokenPolicy(cred, []string{scope}, nil),
-			newFlatTransport(),
 		},
 	}
+	if c.compress {
+		plOpts.PerRetry = append(plOpts.PerRetry, newFlateTransport())
+	}
+
 	azclient, err := azcore.NewClient("arn.Client", build.Version, plOpts, opts)
 	if err != nil {
 		return nil, err
