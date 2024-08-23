@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"testing"
@@ -38,7 +39,7 @@ func TestSetup(t *testing.T) {
 	c := &Client{}
 	for _, test := range tests {
 		c.endpoint = test.endpoint
-		req, err := c.setup(context.Background(), test.body)
+		req, err := c.setup(context.Background(), bytes.NewReader(test.body))
 		switch {
 		case test.wantErr && err == nil:
 			t.Errorf("TestSetup(%s): got err == nil, want err != nil", test.name)

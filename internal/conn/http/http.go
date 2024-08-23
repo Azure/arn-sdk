@@ -4,6 +4,7 @@ package http
 
 import (
 	"bytes"
+	"compress/flate"
 	"context"
 	"fmt"
 	"io"
@@ -42,9 +43,78 @@ var changeScope = map[string]bool{
 }
 
 var readerPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return bytes.NewReader(nil)
 	},
+}
+
+var flatePool = sync.Pool{
+	New: func() any {
+		return &bytes.Buffer{}
+	},
+}
+
+// flateTransport is a custom RoundTripper that applies Deflate compression at the desired level.
+type flateTransport struct {
+	deflateLevel int
+	flatePool    chan *flate.Writer
+}
+
+func newFlatTransport() *flateTransport {
+	return &flateTransport{
+		flatePool: make(chan *flate.Writer, 20),
+	}
+}
+
+// Do performs the actual request and compresses the body using Deflate.
+func (t *flateTransport) Do(req *policy.Request) (*http.Response, error) {
+	// Get the underlying http.Request
+	httpReq := req.Raw()
+
+	// If the request has a body, apply Deflate compression.
+	if httpReq.Body != nil && httpReq.ContentLength > 0 {
+		// Read the original body content.
+		var buf bytes.Buffer
+		_, err := io.Copy(&buf, httpReq.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		// Compress the content using Deflate at the specified level.
+		compressedBuffer := flatePool.Get().(*bytes.Buffer)
+		defer func() {
+			compressedBuffer.Reset()
+			flatePool.Put(compressedBuffer)
+		}()
+
+		var writer *flate.Writer
+		select {
+		case writer = <-t.flatePool:
+		default:
+			writer, err = flate.NewWriter(compressedBuffer, 5)
+			if err != nil {
+				return nil, err
+			}
+		}
+		writer.Reset(compressedBuffer)
+		_, err = writer.Write(buf.Bytes())
+		if err != nil {
+			return nil, err
+		}
+		writer.Close()
+		select {
+		case t.flatePool <- writer:
+		default:
+		}
+
+		// Update the request with the compressed body.
+		httpReq.Body = io.NopCloser(compressedBuffer)
+		httpReq.ContentLength = int64(compressedBuffer.Len())
+		httpReq.Header.Set("Content-Encoding", "deflate")
+	}
+
+	// Use the base RoundTripper to perform the actual request.
+	return req.Next()
 }
 
 // Client is a client for interacting with the ARN receiver API.
@@ -67,6 +137,7 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 	plOpts := runtime.PipelineOptions{
 		PerRetry: []policy.Policy{
 			runtime.NewBearerTokenPolicy(cred, []string{scope}, nil),
+			newFlatTransport(),
 		},
 	}
 	azclient, err := azcore.NewClient("arn.Client", build.Version, plOpts, opts)
@@ -86,7 +157,11 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 
 // Send sends an event (converted to JSON bytes) to the ARN receiver API.
 func (c *Client) Send(ctx context.Context, event []byte) error {
-	req, err := c.setup(ctx, event)
+	read := readerPool.Get().(*bytes.Reader)
+	read.Reset(event)
+	defer readerPool.Put(read)
+
+	req, err := c.setup(ctx, read)
 	if err != nil {
 		return err
 	}
@@ -107,15 +182,12 @@ func (c *Client) Send(ctx context.Context, event []byte) error {
 var appJSON = []string{"application/json"}
 
 // setup creates a new request with the event as the body.
-func (c *Client) setup(ctx context.Context, event []byte) (*policy.Request, error) {
-	if len(event) == 0 {
+func (c *Client) setup(ctx context.Context, event *bytes.Reader) (*policy.Request, error) {
+	if event.Len() == 0 {
 		return nil, fmt.Errorf("event is empty")
 	}
 
-	read := readerPool.Get().(*bytes.Reader)
-	defer readerPool.Put(read)
-	read.Reset(event)
-	r := rsc{read}
+	r := rsc{event}
 
 	req, err := runtime.NewRequest(ctx, http.MethodPost, c.endpoint)
 	if err != nil {
