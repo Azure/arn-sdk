@@ -37,6 +37,10 @@ type Notifications struct {
 	// This is not required to be set if you are using Notify().
 	promise chan error
 
+	// used to measure the time it takes to send the notification
+	// creation time
+	// actually I could use ResourceEventTime
+
 	// ResourceLocation is the location of the resources in this notification. This is the normalized ARM location enum
 	// like "eastus".
 	ResourceLocation string
@@ -66,6 +70,9 @@ func (n Notifications) Promise(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
+		// use max bucket size of 60 seconds
+		// deadline, ok := ctx.Deadline()
+		// metrics.RecordSendEventFailure(60 * time.Second)
 		return models.ErrPromiseTimeout
 	case e := <-n.promise:
 		return e
@@ -111,6 +118,11 @@ func (n Notifications) SetPromise(promise chan error) models.Notifications {
 
 // SendPromise sends an error on the promise to the notification.
 func (n Notifications) SendPromise(e error, backupCh chan error) {
+	// defer func()	{
+	// 	for entry := range n.Data {
+	// 		elapsed := time.Since(entry.ResourceEventTime)
+	// 	}
+	// }()
 	if n.promise == nil {
 		if e == nil {
 			return

@@ -36,6 +36,7 @@ func Init(reg prom.Registerer) {
 
 // RecordSendEventSuccess increases the eventSentCount metric with success == true
 // and records the latency
+// pass []entry.Data here and check entry creation time for latency?
 func RecordSendEventSuccess(elapsed time.Duration) {
 	eventSentCount.With(
 		prom.Labels{
