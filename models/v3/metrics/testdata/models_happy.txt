@@ -14,6 +14,9 @@ arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0"
 arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="4000"} 1
 arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="5000"} 1
 arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="10000"} 1
+arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="60000"} 1
+arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="300000"} 1
+arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="600000"} 1
 arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="+Inf"} 1
 arn_event_sent_ms_sum{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false"} 1000
 arn_event_sent_ms_count{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false"} 1
@@ -31,6 +34,9 @@ arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0"
 arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="4000"} 1
 arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="5000"} 1
 arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="10000"} 1
+arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="60000"} 1
+arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="300000"} 1
+arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="600000"} 1
 arn_event_sent_ms_bucket{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="+Inf"} 1
 arn_event_sent_ms_sum{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true"} 1000
 arn_event_sent_ms_count{otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true"} 1
