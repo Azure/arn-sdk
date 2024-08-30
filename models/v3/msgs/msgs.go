@@ -159,9 +159,9 @@ func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (reterr
 	defer func() {
 		elapsed := time.Since(started)
 		if reterr != nil {
-			metrics.RecordSendEventFailure(elapsed)
+			metrics.RecordSendEventFailure(context.Background(), elapsed)
 		}
-		metrics.RecordSendEventSuccess(elapsed)
+		metrics.RecordSendEventSuccess(context.Background(), elapsed)
 	}()
 
 	if len(n.Data) == 0 {
