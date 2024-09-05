@@ -413,6 +413,7 @@ func (a *ARN) Notify(ctx context.Context, n models.Notifications) error {
 	n = n.SetCtx(ctx)
 	n = n.SetPromise(conn.PromisePool.Get().(chan error))
 	defer n.Recycle()
+	modelmetrics.ActivePromise(context.Background())
 
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -437,6 +438,7 @@ func (a *ARN) Async(ctx context.Context, n models.Notifications, promise bool) m
 	n = n.SetCtx(ctx)
 	if promise {
 		n = n.SetPromise(conn.PromisePool.Get().(chan error))
+		modelmetrics.ActivePromise(context.Background())
 	}
 
 	x := n.DataCount()

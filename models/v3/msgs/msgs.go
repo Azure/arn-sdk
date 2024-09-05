@@ -128,7 +128,6 @@ func (n Notifications) SendPromise(e error, backupCh chan error) {
 	}
 	select {
 	case n.promise <- e:
-		metrics.ActivePromise(context.Background())
 	default:
 		slog.Default().Error("Bug: had a Notification promise, but it blocked")
 	}
@@ -146,14 +145,14 @@ func (n Notifications) dataToJSON() ([]byte, error) {
 
 // SendEvent converts the notification to an event and sends it to the ARN service.
 // Do not call this function directly, use methods on the Client instead.
-func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (reterr error) {
+func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (err error) {
 	started := time.Now()
 	// keep track so we can record whether the data was inlined or not (receiver or blob)
 	inline := false
 	var dataSize int64
 	defer func() {
 		elapsed := time.Since(started)
-		if reterr != nil {
+		if err != nil {
 			metrics.SendEventFailure(context.Background(), elapsed, inline, dataSize)
 			return
 		}
@@ -175,7 +174,7 @@ func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (reterr
 		e.StatusCode = types.StatusCode
 		event.Data.Resources[i] = e
 	}
-	if err := event.Validate(); err != nil {
+	if err = event.Validate(); err != nil {
 		return err
 	}
 
