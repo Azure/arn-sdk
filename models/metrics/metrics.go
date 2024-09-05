@@ -136,7 +136,7 @@ func Promise(ctx context.Context, err error) {
 }
 
 // ActivePromise increases the promises.current metric.
-// This should be called when a promise is sent.
+// This should be called when a promise is created.
 func ActivePromise(ctx context.Context) {
 	if promises.current != nil {
 		promises.current.Add(ctx, 1)
