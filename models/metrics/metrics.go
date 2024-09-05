@@ -36,7 +36,7 @@ func metricName(name string) string {
 	return fmt.Sprintf("%s_%s", subsystem, name)
 }
 
-// Init initializes the arn model metrics. This should only be called by the tattler constructor or tests.
+// Init initializes the arn sdk model metrics. This should only be called by the tattler constructor or tests.
 func Init(meter metric.Meter) error {
 	var err error
 	events.sent, err = meter.Int64Counter(metricName("event_sent_total"), metric.WithDescription("total number of events sent by the ARN client"))

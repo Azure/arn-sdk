@@ -368,8 +368,7 @@ func New(ctx context.Context, args Args, options ...Option) (*ARN, error) {
 	}
 
 	if a.meterProvider != nil {
-		meter := a.meterProvider.Meter("arn")
-		if err := modelmetrics.Init(meter); err != nil {
+		if err := modelmetrics.Init(a.meterProvider.Meter("arn")); err != nil {
 			return nil, err
 		}
 	}
