@@ -1,60 +1,60 @@
-# HELP arn_current_promise_count current number of promises made by the ARN client
-# TYPE arn_current_promise_count gauge
-arn_current_promise_count{otel_scope_name="testmeter",otel_scope_version="v0.1.0"} 0
-# HELP arn_event_sent_bytes_total total number of bytes in event data sent by the ARN client
-# TYPE arn_event_sent_bytes_total counter
-arn_event_sent_bytes_total{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false"} 0
-arn_event_sent_bytes_total{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true"} 40000
-# HELP arn_event_sent_ms time spent to send ARN event
-# TYPE arn_event_sent_ms histogram
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="50"} 0
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="100"} 0
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="200"} 0
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="400"} 0
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="600"} 0
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="800"} 0
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="1000"} 1
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="1250"} 1
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="1500"} 1
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="2000"} 1
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="3000"} 1
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="4000"} 1
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="5000"} 1
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="10000"} 1
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="60000"} 1
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="300000"} 1
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="600000"} 1
-arn_event_sent_ms_bucket{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="+Inf"} 1
-arn_event_sent_ms_sum{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false"} 1000
-arn_event_sent_ms_count{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="50"} 0
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="100"} 0
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="200"} 0
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="400"} 0
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="600"} 0
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="800"} 0
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="1000"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="1250"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="1500"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="2000"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="3000"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="4000"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="5000"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="10000"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="60000"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="300000"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="600000"} 1
-arn_event_sent_ms_bucket{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="+Inf"} 1
-arn_event_sent_ms_sum{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true"} 1000
-arn_event_sent_ms_count{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true"} 1
-# HELP arn_event_sent_total total number of events sent by the ARN client
-# TYPE arn_event_sent_total counter
-arn_event_sent_total{inline="blob",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false"} 1
-arn_event_sent_total{inline="inline",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true"} 1
-# HELP arn_promise_total total number of promises made by the ARN client
-# TYPE arn_promise_total counter
-arn_promise_total{otel_scope_name="testmeter",otel_scope_version="v0.1.0",timeout="false"} 1
-arn_promise_total{otel_scope_name="testmeter",otel_scope_version="v0.1.0",timeout="true"} 1
+# HELP arn_sdk_current_promise_count current number of promises made by the ARN client
+# TYPE arn_sdk_current_promise_count gauge
+arn_sdk_current_promise_count{otel_scope_name="testmeter",otel_scope_version="v0.1.0"} 0
+# HELP arn_sdk_event_sent_bytes_total total number of bytes in event data sent by the ARN client
+# TYPE arn_sdk_event_sent_bytes_total counter
+arn_sdk_event_sent_bytes_total{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false"} 0
+arn_sdk_event_sent_bytes_total{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true"} 40000
+# HELP arn_sdk_event_sent_ms time spent to send ARN event
+# TYPE arn_sdk_event_sent_ms histogram
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="50"} 0
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="100"} 0
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="200"} 0
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="400"} 0
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="600"} 0
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="800"} 0
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="1000"} 1
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="1250"} 1
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="1500"} 1
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="2000"} 1
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="3000"} 1
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="4000"} 1
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="5000"} 1
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="10000"} 1
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="60000"} 1
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="300000"} 1
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="600000"} 1
+arn_sdk_event_sent_ms_bucket{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false",le="+Inf"} 1
+arn_sdk_event_sent_ms_sum{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false"} 1000
+arn_sdk_event_sent_ms_count{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="50"} 0
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="100"} 0
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="200"} 0
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="400"} 0
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="600"} 0
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="800"} 0
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="1000"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="1250"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="1500"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="2000"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="3000"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="4000"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="5000"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="10000"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="60000"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="300000"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="600000"} 1
+arn_sdk_event_sent_ms_bucket{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true",le="+Inf"} 1
+arn_sdk_event_sent_ms_sum{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true"} 1000
+arn_sdk_event_sent_ms_count{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true"} 1
+# HELP arn_sdk_event_sent_total total number of events sent by the ARN client
+# TYPE arn_sdk_event_sent_total counter
+arn_sdk_event_sent_total{inline="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="false"} 1
+arn_sdk_event_sent_total{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true"} 1
+# HELP arn_sdk_promise_total total number of promises made by the ARN client
+# TYPE arn_sdk_promise_total counter
+arn_sdk_promise_total{otel_scope_name="testmeter",otel_scope_version="v0.1.0",timeout="false"} 1
+arn_sdk_promise_total{otel_scope_name="testmeter",otel_scope_version="v0.1.0",timeout="true"} 1
 # HELP otel_scope_info Instrumentation Scope metadata
 # TYPE otel_scope_info gauge
 otel_scope_info{otel_scope_name="testmeter",otel_scope_version="v0.1.0"} 1

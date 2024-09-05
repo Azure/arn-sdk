@@ -3,17 +3,14 @@ package metrics
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-
-	"github.com/Azure/arn-sdk/models/v3/schema/types"
 )
 
 const (
-	subsystem    = "arn"
+	subsystem    = "arn-sdk"
 	successLabel = "success"
 	inlineLabel  = "inline"
 	timeoutLabel = "timeout"
@@ -26,7 +23,6 @@ var (
 
 	currentPromiseCount metric.Int64UpDownCounter
 	promiseCount        metric.Int64Counter
-	promiseLatency      metric.Int64Histogram
 )
 
 func metricName(name string) string {
@@ -66,25 +62,15 @@ func Init(meter metric.Meter) error {
 		return err
 	}
 
-	// TODO: adjust buckets
-	promiseLatency, err = meter.Int64Histogram(
-		metricName("promise_ms"),
-		metric.WithDescription("time elapsed between checking for promise and promise completion"),
-		metric.WithExplicitBucketBoundaries(50, 100, 200, 400, 600, 800, 1000, 1250, 1500, 2000, 3000, 4000, 5000, 10000, 60000, 300000, 600000),
-	)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
 // SendEventSuccess increases the eventSentCount metric with success == true
-// and records the latency
-func SendEventSuccess(ctx context.Context, elapsed time.Duration, inline types.ResourcesContainer, dataSize int64) {
+// and records the latency.
+func SendEventSuccess(ctx context.Context, elapsed time.Duration, inline bool, dataSize int64) {
 	opt := metric.WithAttributes(
 		attribute.Key(successLabel).Bool(true),
-		attribute.Key(inlineLabel).String(strings.Trim(inline.String(), "\"")),
+		attribute.Key(inlineLabel).Bool(inline),
 	)
 	if eventSentCount != nil {
 		eventSentCount.Add(ctx, 1, opt)
@@ -98,11 +84,11 @@ func SendEventSuccess(ctx context.Context, elapsed time.Duration, inline types.R
 }
 
 // SendEventFailure increases the eventSentCount metric with success == false
-// and records the latency
-func SendEventFailure(ctx context.Context, elapsed time.Duration, inline types.ResourcesContainer, dataSize int64) {
+// and records the latency.
+func SendEventFailure(ctx context.Context, elapsed time.Duration, inline bool, dataSize int64) {
 	opt := metric.WithAttributes(
 		attribute.Key(successLabel).Bool(false),
-		attribute.Key(inlineLabel).String(strings.Trim(inline.String(), "\"")),
+		attribute.Key(inlineLabel).Bool(inline),
 	)
 	if eventSentCount != nil {
 		eventSentCount.Add(ctx, 1, opt)
@@ -119,7 +105,7 @@ func SendEventFailure(ctx context.Context, elapsed time.Duration, inline types.R
 // and records the approximate latency (which may be an underestimation).
 // This also decrements the current promise count.
 // This should be called on promise completion.
-func Promise(ctx context.Context, elapsed time.Duration, timeout bool) {
+func Promise(ctx context.Context, timeout bool) {
 	opt := metric.WithAttributes(
 		attribute.Key(timeoutLabel).Bool(timeout),
 	)
@@ -127,7 +113,7 @@ func Promise(ctx context.Context, elapsed time.Duration, timeout bool) {
 		promiseCount.Add(ctx, 1, opt)
 	}
 	if currentPromiseCount != nil {
-		currentPromiseCount.Add(ctx, -1, metric.WithAttributes())
+		currentPromiseCount.Add(ctx, -1)
 	}
 }
 
@@ -135,6 +121,6 @@ func Promise(ctx context.Context, elapsed time.Duration, timeout bool) {
 // This should be called when a promise is sent.
 func ActivePromise(ctx context.Context) {
 	if currentPromiseCount != nil {
-		currentPromiseCount.Add(ctx, 1, metric.WithAttributes())
+		currentPromiseCount.Add(ctx, 1)
 	}
 }

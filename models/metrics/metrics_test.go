@@ -16,8 +16,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
-
-	"github.com/Azure/arn-sdk/models/v3/schema/types"
 )
 
 // Based on
@@ -38,24 +36,24 @@ func TestModelsMetrics(t *testing.T) {
 			expectedFile: "testdata/models_happy.txt",
 			recordMetrics: func(ctx context.Context, meter otelmetric.Meter) {
 				Init(meter)
-				SendEventSuccess(ctx, 1*time.Second, types.RCInline, 40000)
-				SendEventFailure(ctx, 1*time.Second, types.RCBlob, 0)
+				SendEventSuccess(ctx, 1*time.Second, true, 40000)
+				SendEventFailure(ctx, 1*time.Second, false, 0)
 				ActivePromise(ctx)
-				Promise(ctx, 1*time.Second, false)
+				Promise(ctx, false)
 				ActivePromise(ctx)
-				Promise(ctx, 1*time.Second, true)
+				Promise(ctx, true)
 			},
 		},
 		{
 			name:         "models metrics not initialized",
 			expectedFile: "testdata/models_nometrics.txt",
 			recordMetrics: func(ctx context.Context, meter otelmetric.Meter) {
-				SendEventSuccess(ctx, 1*time.Second, types.RCInline, 0)
-				SendEventFailure(ctx, 1*time.Second, types.RCBlob, 0)
+				SendEventSuccess(ctx, 1*time.Second, true, 0)
+				SendEventFailure(ctx, 1*time.Second, false, 0)
 				ActivePromise(ctx)
-				Promise(ctx, 1*time.Second, false)
+				Promise(ctx, false)
 				ActivePromise(ctx)
-				Promise(ctx, 1*time.Second, true)
+				Promise(ctx, true)
 			},
 		},
 	}

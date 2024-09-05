@@ -60,24 +60,17 @@ func (n Notifications) Promise(ctx context.Context) error {
 		conn.PromisePool.Put(n.promise)
 	}()
 
-	// This is just an approximation of start time, since this might not be called
-	// immediately after the promise is sent.
-	started := time.Now()
-
 	if ctx.Err() != nil {
-		elapsed := time.Since(started)
-		metrics.Promise(context.Background(), elapsed, false)
+		metrics.Promise(context.Background(), false)
 		return ctx.Err()
 	}
 
 	select {
 	case <-ctx.Done():
-		elapsed := time.Since(started)
-		metrics.Promise(context.Background(), elapsed, true)
+		metrics.Promise(context.Background(), true)
 		return models.ErrPromiseTimeout
 	case e := <-n.promise:
-		elapsed := time.Since(started)
-		metrics.Promise(context.Background(), elapsed, false)
+		metrics.Promise(context.Background(), false)
 		return e
 	}
 }
@@ -156,7 +149,7 @@ func (n Notifications) dataToJSON() ([]byte, error) {
 func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (reterr error) {
 	started := time.Now()
 	// keep track so we can record whether the data was inlined or not (receiver or blob)
-	inline := types.RCUnknown
+	inline := false
 	var dataSize int64
 	defer func() {
 		elapsed := time.Since(started)
@@ -187,10 +180,10 @@ func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (reterr
 	}
 
 	dataSize = int64(len(event.Data.Data))
-	inline = event.Data.ResourcesContainer
 
 	// If the data is marked inline, we can send over HTTP directly.
 	if event.Data.ResourcesContainer == types.RCInline {
+		inline = true
 		return n.sendHTTP(hc, event)
 	}
 
