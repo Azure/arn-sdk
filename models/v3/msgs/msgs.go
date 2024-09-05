@@ -13,9 +13,9 @@ import (
 	"github.com/Azure/arn-sdk/internal/conn/maxvals"
 	"github.com/Azure/arn-sdk/internal/conn/storage"
 	"github.com/Azure/arn-sdk/models"
+	"github.com/Azure/arn-sdk/models/metrics"
 	"github.com/Azure/arn-sdk/models/v3/schema/envelope"
 	"github.com/Azure/arn-sdk/models/v3/schema/types"
-	"github.com/Azure/arn-sdk/models/v3/metrics"
 	"github.com/Azure/arn-sdk/models/version"
 
 	"github.com/go-json-experiment/json"
@@ -36,10 +36,6 @@ type Notifications struct {
 	// the result from it. After that, the promise can be reused in another Notification.
 	// This is not required to be set if you are using Notify().
 	promise chan error
-
-	// used to measure the time it takes to send the notification
-	// creation time
-	// actually I could use ResourceEventTime
 
 	// ResourceLocation is the location of the resources in this notification. This is the normalized ARM location enum
 	// like "eastus".
@@ -64,17 +60,24 @@ func (n Notifications) Promise(ctx context.Context) error {
 		conn.PromisePool.Put(n.promise)
 	}()
 
+	// This is just an approximation of start time, since this might not be called
+	// immediately after the promise is sent.
+	started := time.Now()
+
 	if ctx.Err() != nil {
+		elapsed := time.Since(started)
+		metrics.Promise(context.Background(), elapsed, false)
 		return ctx.Err()
 	}
 
 	select {
 	case <-ctx.Done():
-		// use max bucket size of 60 seconds
-		// deadline, ok := ctx.Deadline()
-		// metrics.RecordSendEventFailure(60 * time.Second)
+		elapsed := time.Since(started)
+		metrics.Promise(context.Background(), elapsed, true)
 		return models.ErrPromiseTimeout
 	case e := <-n.promise:
+		elapsed := time.Since(started)
+		metrics.Promise(context.Background(), elapsed, false)
 		return e
 	}
 }
@@ -118,11 +121,6 @@ func (n Notifications) SetPromise(promise chan error) models.Notifications {
 
 // SendPromise sends an error on the promise to the notification.
 func (n Notifications) SendPromise(e error, backupCh chan error) {
-	// defer func()	{
-	// 	for entry := range n.Data {
-	// 		elapsed := time.Since(entry.ResourceEventTime)
-	// 	}
-	// }()
 	if n.promise == nil {
 		if e == nil {
 			return
@@ -137,6 +135,7 @@ func (n Notifications) SendPromise(e error, backupCh chan error) {
 	}
 	select {
 	case n.promise <- e:
+		metrics.ActivePromise(context.Background())
 	default:
 		slog.Default().Error("Bug: had a Notification promise, but it blocked")
 	}
@@ -156,12 +155,16 @@ func (n Notifications) dataToJSON() ([]byte, error) {
 // Do not call this function directly, use methods on the Client instead.
 func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (reterr error) {
 	started := time.Now()
+	// keep track so we can record whether the data was inlined or not (receiver or blob)
+	inline := types.RCUnknown
+	var dataSize int64
 	defer func() {
 		elapsed := time.Since(started)
 		if reterr != nil {
-			metrics.RecordSendEventFailure(context.Background(), elapsed)
+			metrics.SendEventFailure(context.Background(), elapsed, inline, dataSize)
+			return
 		}
-		metrics.RecordSendEventSuccess(context.Background(), elapsed)
+		metrics.SendEventSuccess(context.Background(), elapsed, inline, dataSize)
 	}()
 
 	if len(n.Data) == 0 {
@@ -182,6 +185,9 @@ func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (reterr
 	if err := event.Validate(); err != nil {
 		return err
 	}
+
+	dataSize = int64(len(event.Data.Data))
+	inline = event.Data.ResourcesContainer
 
 	// If the data is marked inline, we can send over HTTP directly.
 	if event.Data.ResourcesContainer == types.RCInline {

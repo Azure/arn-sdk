@@ -179,8 +179,10 @@ import (
 	"github.com/Azure/arn-sdk/internal/conn/maxvals"
 	"github.com/Azure/arn-sdk/internal/conn/storage"
 	"github.com/Azure/arn-sdk/models"
+	modelmetrics "github.com/Azure/arn-sdk/models/metrics"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // ARN is a client for interacting with the ARN service.
@@ -196,6 +198,8 @@ type ARN struct {
 	testConn func(n models.Notifications)
 
 	sigSenderClosed chan struct{}
+
+	meterProvider metric.MeterProvider
 }
 
 // Option is a function that sets an option on the client.
@@ -214,6 +218,18 @@ func WithLogger(log *slog.Logger) Option {
 func WithNotifyCh(in chan models.Notifications) Option {
 	return func(c *ARN) error {
 		c.in = in
+		return nil
+	}
+}
+
+// WithMeterProvider sets the meter provider with which to register metrics.
+// Defaults to nil, in which case metrics won't be registered.
+func WithMeterProvider(m metric.MeterProvider) Option {
+	return func(r *ARN) error {
+		if m == nil {
+			return fmt.Errorf("meter cannot be nil")
+		}
+		r.meterProvider = m
 		return nil
 	}
 }
@@ -349,6 +365,13 @@ func New(ctx context.Context, args Args, options ...Option) (*ARN, error) {
 	a.conn, err = conn.New(h, s, a.errs, conn.WithLogger(a.logger))
 	if err != nil {
 		return nil, fmt.Errorf("problem with conn client: %v", err)
+	}
+
+	if a.meterProvider != nil {
+		meter := a.meterProvider.Meter("arn")
+		if err := modelmetrics.Init(meter); err != nil {
+			return nil, err
+		}
 	}
 
 	go a.sender()
