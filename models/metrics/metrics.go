@@ -12,6 +12,7 @@ import (
 const (
 	subsystem    = "arn-sdk"
 	successLabel = "success"
+	errorLabel   = "error"
 	inlineLabel  = "inline"
 	timeoutLabel = "timeout"
 )
@@ -111,8 +112,9 @@ func SendEventFailure(ctx context.Context, elapsed time.Duration, inline bool, d
 // Promise increases the promises.completed metric with timeout label.
 // This also decrements the current promise count.
 // This should be called on promise completion.
-func Promise(ctx context.Context, timeout bool) {
+func Promise(ctx context.Context, err bool, timeout bool) {
 	opt := metric.WithAttributes(
+		attribute.Key(errorLabel).Bool(err),
 		attribute.Key(timeoutLabel).Bool(timeout),
 	)
 	if promises.completed != nil {

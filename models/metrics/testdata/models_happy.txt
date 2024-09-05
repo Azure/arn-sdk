@@ -53,8 +53,8 @@ arn_sdk_event_sent_total{inline="false",otel_scope_name="testmeter",otel_scope_v
 arn_sdk_event_sent_total{inline="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",success="true"} 1
 # HELP arn_sdk_promise_total total number of promises made by the ARN client
 # TYPE arn_sdk_promise_total counter
-arn_sdk_promise_total{otel_scope_name="testmeter",otel_scope_version="v0.1.0",timeout="false"} 1
-arn_sdk_promise_total{otel_scope_name="testmeter",otel_scope_version="v0.1.0",timeout="true"} 1
+arn_sdk_promise_total{error="false",otel_scope_name="testmeter",otel_scope_version="v0.1.0",timeout="false"} 1
+arn_sdk_promise_total{error="true",otel_scope_name="testmeter",otel_scope_version="v0.1.0",timeout="true"} 1
 # HELP otel_scope_info Instrumentation Scope metadata
 # TYPE otel_scope_info gauge
 otel_scope_info{otel_scope_name="testmeter",otel_scope_version="v0.1.0"} 1

@@ -39,9 +39,9 @@ func TestModelsMetrics(t *testing.T) {
 				SendEventSuccess(ctx, 1*time.Second, true, 40000)
 				SendEventFailure(ctx, 1*time.Second, false, 0)
 				ActivePromise(ctx)
-				Promise(ctx, false)
+				Promise(ctx, false, false)
 				ActivePromise(ctx)
-				Promise(ctx, true)
+				Promise(ctx, true, true)
 			},
 		},
 		{
@@ -51,9 +51,9 @@ func TestModelsMetrics(t *testing.T) {
 				SendEventSuccess(ctx, 1*time.Second, true, 0)
 				SendEventFailure(ctx, 1*time.Second, false, 0)
 				ActivePromise(ctx)
-				Promise(ctx, false)
+				Promise(ctx, false, false)
 				ActivePromise(ctx)
-				Promise(ctx, true)
+				Promise(ctx, false, true)
 			},
 		},
 	}
