@@ -16,13 +16,20 @@ const (
 	timeoutLabel = "timeout"
 )
 
-var (
-	eventSentCount      metric.Int64Counter
-	eventSentBytesCount metric.Int64Counter
-	eventSentLatency    metric.Int64Histogram
+type eventMetrics struct {
+	sent    metric.Int64Counter
+	bytes   metric.Int64Counter
+	latency metric.Int64Histogram
+}
 
-	currentPromiseCount metric.Int64UpDownCounter
-	promiseCount        metric.Int64Counter
+type promiseMetrics struct {
+	current   metric.Int64UpDownCounter
+	completed metric.Int64Counter
+}
+
+var (
+	events   eventMetrics
+	promises promiseMetrics
 )
 
 func metricName(name string) string {
@@ -32,18 +39,18 @@ func metricName(name string) string {
 // Init initializes the arn model metrics. This should only be called by the tattler constructor or tests.
 func Init(meter metric.Meter) error {
 	var err error
-	eventSentCount, err = meter.Int64Counter(metricName("event_sent_total"), metric.WithDescription("total number of events sent by the ARN client"))
+	events.sent, err = meter.Int64Counter(metricName("event_sent_total"), metric.WithDescription("total number of events sent by the ARN client"))
 	if err != nil {
 		return err
 	}
 
-	eventSentBytesCount, err = meter.Int64Counter(metricName("event_sent_bytes_total"), metric.WithDescription("total number of bytes in event data sent by the ARN client"))
+	events.bytes, err = meter.Int64Counter(metricName("event_sent_bytes_total"), metric.WithDescription("total number of bytes in event data sent by the ARN client"))
 	if err != nil {
 		return err
 	}
 
 	// TODO: adjust buckets
-	eventSentLatency, err = meter.Int64Histogram(
+	events.latency, err = meter.Int64Histogram(
 		metricName("event_sent_ms"),
 		metric.WithDescription("time spent to send ARN event"),
 		metric.WithExplicitBucketBoundaries(50, 100, 200, 400, 600, 800, 1000, 1250, 1500, 2000, 3000, 4000, 5000, 10000, 60000, 300000, 600000),
@@ -52,12 +59,12 @@ func Init(meter metric.Meter) error {
 		return err
 	}
 
-	promiseCount, err = meter.Int64Counter(metricName("promise_total"), metric.WithDescription("total number of promises made by the ARN client"))
+	promises.completed, err = meter.Int64Counter(metricName("promise_total"), metric.WithDescription("total number of promises made by the ARN client"))
 	if err != nil {
 		return err
 	}
 
-	currentPromiseCount, err = meter.Int64UpDownCounter(metricName("current_promise_count"), metric.WithDescription("current number of promises made by the ARN client"))
+	promises.current, err = meter.Int64UpDownCounter(metricName("current_promise_count"), metric.WithDescription("current number of promises made by the ARN client"))
 	if err != nil {
 		return err
 	}
@@ -65,62 +72,61 @@ func Init(meter metric.Meter) error {
 	return nil
 }
 
-// SendEventSuccess increases the eventSentCount metric with success == true
+// SendEventSuccess increases the events.sent metric with success == true
 // and records the latency.
 func SendEventSuccess(ctx context.Context, elapsed time.Duration, inline bool, dataSize int64) {
 	opt := metric.WithAttributes(
 		attribute.Key(successLabel).Bool(true),
 		attribute.Key(inlineLabel).Bool(inline),
 	)
-	if eventSentCount != nil {
-		eventSentCount.Add(ctx, 1, opt)
+	if events.sent != nil {
+		events.sent.Add(ctx, 1, opt)
 	}
-	if eventSentBytesCount != nil {
-		eventSentBytesCount.Add(ctx, dataSize, opt)
+	if events.bytes != nil {
+		events.bytes.Add(ctx, dataSize, opt)
 	}
-	if eventSentLatency != nil {
-		eventSentLatency.Record(ctx, elapsed.Milliseconds(), opt)
+	if events.latency != nil {
+		events.latency.Record(ctx, elapsed.Milliseconds(), opt)
 	}
 }
 
-// SendEventFailure increases the eventSentCount metric with success == false
+// SendEventFailure increases the events.sent metric with success == false
 // and records the latency.
 func SendEventFailure(ctx context.Context, elapsed time.Duration, inline bool, dataSize int64) {
 	opt := metric.WithAttributes(
 		attribute.Key(successLabel).Bool(false),
 		attribute.Key(inlineLabel).Bool(inline),
 	)
-	if eventSentCount != nil {
-		eventSentCount.Add(ctx, 1, opt)
+	if events.sent != nil {
+		events.sent.Add(ctx, 1, opt)
 	}
-	if eventSentBytesCount != nil {
-		eventSentBytesCount.Add(ctx, dataSize, opt)
+	if events.bytes != nil {
+		events.bytes.Add(ctx, dataSize, opt)
 	}
-	if eventSentLatency != nil {
-		eventSentLatency.Record(ctx, elapsed.Milliseconds(), opt)
+	if events.latency != nil {
+		events.latency.Record(ctx, elapsed.Milliseconds(), opt)
 	}
 }
 
-// Promise increases the promiseCount metric with timeout label,
-// and records the approximate latency (which may be an underestimation).
+// Promise increases the promises.completed metric with timeout label.
 // This also decrements the current promise count.
 // This should be called on promise completion.
 func Promise(ctx context.Context, timeout bool) {
 	opt := metric.WithAttributes(
 		attribute.Key(timeoutLabel).Bool(timeout),
 	)
-	if promiseCount != nil {
-		promiseCount.Add(ctx, 1, opt)
+	if promises.completed != nil {
+		promises.completed.Add(ctx, 1, opt)
 	}
-	if currentPromiseCount != nil {
-		currentPromiseCount.Add(ctx, -1)
+	if promises.current != nil {
+		promises.current.Add(ctx, -1)
 	}
 }
 
-// ActivePromise increases the currentPromiseCount metric.
+// ActivePromise increases the promises.current metric.
 // This should be called when a promise is sent.
 func ActivePromise(ctx context.Context) {
-	if currentPromiseCount != nil {
-		currentPromiseCount.Add(ctx, 1)
+	if promises.current != nil {
+		promises.current.Add(ctx, 1)
 	}
 }
