@@ -61,16 +61,16 @@ func (n Notifications) Promise(ctx context.Context) error {
 	}()
 
 	if ctx.Err() != nil {
-		metrics.Promise(context.Background(), true, false)
+		metrics.Promise(context.Background(), ctx.Err())
 		return ctx.Err()
 	}
 
 	select {
 	case <-ctx.Done():
-		metrics.Promise(context.Background(), true, true)
+		metrics.Promise(context.Background(), models.ErrPromiseTimeout)
 		return models.ErrPromiseTimeout
 	case e := <-n.promise:
-		metrics.Promise(context.Background(), e != nil, false)
+		metrics.Promise(context.Background(), e)
 		return e
 	}
 }

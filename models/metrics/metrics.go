@@ -2,11 +2,14 @@ package metrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/Azure/arn-sdk/models"
 )
 
 const (
@@ -112,10 +115,17 @@ func SendEventFailure(ctx context.Context, elapsed time.Duration, inline bool, d
 // Promise increases the promises.completed metric with timeout label.
 // This also decrements the current promise count.
 // This should be called on promise completion.
-func Promise(ctx context.Context, err bool, timeout bool) {
+func Promise(ctx context.Context, err error) {
+	var isErr, isTimeout bool
+	if err != nil {
+		isErr = true
+		if errors.Is(err, models.ErrPromiseTimeout) {
+			isTimeout = true
+		}
+	}
 	opt := metric.WithAttributes(
-		attribute.Key(errorLabel).Bool(err),
-		attribute.Key(timeoutLabel).Bool(timeout),
+		attribute.Key(errorLabel).Bool(isErr),
+		attribute.Key(timeoutLabel).Bool(isTimeout),
 	)
 	if promises.completed != nil {
 		promises.completed.Add(ctx, 1, opt)

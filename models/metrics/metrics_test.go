@@ -16,6 +16,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+
+	"github.com/Azure/arn-sdk/models"
 )
 
 // Based on
@@ -39,9 +41,11 @@ func TestModelsMetrics(t *testing.T) {
 				SendEventSuccess(ctx, 1*time.Second, true, 40000)
 				SendEventFailure(ctx, 1*time.Second, false, 0)
 				ActivePromise(ctx)
-				Promise(ctx, false, false)
+				Promise(ctx, nil)
 				ActivePromise(ctx)
-				Promise(ctx, true, true)
+				Promise(ctx, models.ErrPromiseTimeout)
+				ActivePromise(ctx)
+				Promise(ctx, models.ErrBatchSize)
 			},
 		},
 		{
@@ -51,9 +55,11 @@ func TestModelsMetrics(t *testing.T) {
 				SendEventSuccess(ctx, 1*time.Second, true, 0)
 				SendEventFailure(ctx, 1*time.Second, false, 0)
 				ActivePromise(ctx)
-				Promise(ctx, false, false)
+				Promise(ctx, nil)
 				ActivePromise(ctx)
-				Promise(ctx, false, true)
+				Promise(ctx, models.ErrPromiseTimeout)
+				ActivePromise(ctx)
+				Promise(ctx, models.ErrBatchSize)
 			},
 		},
 	}
