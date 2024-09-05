@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/arn-sdk/internal/conn/maxvals"
 	"github.com/Azure/arn-sdk/internal/conn/storage"
 	"github.com/Azure/arn-sdk/models"
+	"github.com/Azure/arn-sdk/models/metrics"
 	"github.com/Azure/arn-sdk/models/v3/schema/envelope"
 	"github.com/Azure/arn-sdk/models/v3/schema/types"
 	"github.com/Azure/arn-sdk/models/version"
@@ -60,13 +61,16 @@ func (n Notifications) Promise(ctx context.Context) error {
 	}()
 
 	if ctx.Err() != nil {
+		metrics.Promise(context.Background(), ctx.Err())
 		return ctx.Err()
 	}
 
 	select {
 	case <-ctx.Done():
+		metrics.Promise(context.Background(), models.ErrPromiseTimeout)
 		return models.ErrPromiseTimeout
 	case e := <-n.promise:
+		metrics.Promise(context.Background(), e)
 		return e
 	}
 }
@@ -141,7 +145,20 @@ func (n Notifications) dataToJSON() ([]byte, error) {
 
 // SendEvent converts the notification to an event and sends it to the ARN service.
 // Do not call this function directly, use methods on the Client instead.
-func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) error {
+func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (err error) {
+	started := time.Now()
+	// keep track so we can record whether the data was inlined or not (receiver or blob)
+	inline := false
+	var dataSize int64
+	defer func() {
+		elapsed := time.Since(started)
+		if err != nil {
+			metrics.SendEventFailure(context.Background(), elapsed, inline, dataSize)
+			return
+		}
+		metrics.SendEventSuccess(context.Background(), elapsed, inline, dataSize)
+	}()
+
 	if len(n.Data) == 0 {
 		return errors.New("no data to send")
 	}
@@ -157,12 +174,15 @@ func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) error {
 		e.StatusCode = types.StatusCode
 		event.Data.Resources[i] = e
 	}
-	if err := event.Validate(); err != nil {
+	if err = event.Validate(); err != nil {
 		return err
 	}
 
+	dataSize = int64(len(event.Data.Data))
+
 	// If the data is marked inline, we can send over HTTP directly.
 	if event.Data.ResourcesContainer == types.RCInline {
+		inline = true
 		return n.sendHTTP(hc, event)
 	}
 
