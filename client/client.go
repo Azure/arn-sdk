@@ -1,7 +1,8 @@
 /*
 Package client provides a client for interacting with the ARN service.
 
-NOTE: AKS engineers: It is highly unlikely that you should be using this package. Please contact AKS runtime eng. for more information.
+NOTE: AKS engineers: If you trying to send node/pod/etc information, you are likely duplicating work that is already
+done. Please contact AKS runtime engineering (under the node team) for more information.
 
 Allows you to run in two modes:
 - Synchronous: Use Notify() to send a notification and block until it is sent.

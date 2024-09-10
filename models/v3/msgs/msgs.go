@@ -42,6 +42,8 @@ type Notifications struct {
 	ResourceLocation string
 	// PublisherInfo is the Namespace of the publisher sending the data of this notification, for example Microsoft.Resources is be the publisherInfo for ARM.
 	PublisherInfo string
+	// AdditionalBatchProperties can contain the sdkversion, batchsize, subscription partition tag etc.
+	AdditionalBatchProperties map[string]any
 
 	// Data is the data to send in the notification.
 	Data []types.NotificationResource
@@ -214,11 +216,12 @@ func (n Notifications) toEvent() ([]byte, envelope.Event, error) {
 		return dataJSON, envelope.Event{
 			EventMeta: meta,
 			Data: types.Data{
-				Data:               dataJSON,
-				ResourcesContainer: types.RCInline,
-				ResourceLocation:   n.ResourceLocation,
-				PublisherInfo:      n.PublisherInfo,
-				Resources:          n.Data,
+				Data:                      dataJSON,
+				AdditionalBatchProperties: n.AdditionalBatchProperties,
+				ResourcesContainer:        types.RCInline,
+				ResourceLocation:          n.ResourceLocation,
+				PublisherInfo:             n.PublisherInfo,
+				Resources:                 n.Data,
 			},
 		}, nil
 	}
