@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"time"
 	"unique"
 
@@ -91,10 +90,14 @@ func (d Data) Validate() error {
 		}
 
 		rscAPIVersion := ""
-		var rscType reflect.Type
+		var rscType [2]string
 		for i, r := range d.Resources {
 			if err := r.Validate(); err != nil {
 				return fmt.Errorf(".Resources[%d]%w", i, err)
+			}
+
+			if r.ArmResource.arm == nil {
+				return fmt.Errorf("ArmResource was not created with NewARMResource()")
 			}
 
 			// All ARMResource.Properties must be of the same type. This either gets the type on the
@@ -103,10 +106,15 @@ func (d Data) Validate() error {
 			// it matches if it is set on Data.
 			if i == 0 {
 				rscAPIVersion = r.APIVersion
-				rscType = reflect.TypeOf(r.ArmResource.Properties)
+				rscType[0] = r.ArmResource.arm.ResourceType.Namespace
+				rscType[1] = r.ArmResource.arm.ResourceType.Type
 			} else {
-				if unique.Make(rscType) != unique.Make(reflect.TypeOf(r)) {
-					return errors.New("all NotificationResource.ARMResource.Properties must be of the same type")
+				compare := [2]string{
+					r.ArmResource.arm.ResourceType.Namespace,
+					r.ArmResource.arm.ResourceType.Type,
+				}
+				if unique.Make(rscType) != unique.Make(compare) {
+					return errors.New("all NotificationResource.ArmResource.Properties must be of the same type")
 				}
 			}
 
