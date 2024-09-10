@@ -18,7 +18,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
+	"unique"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 )
@@ -73,6 +75,7 @@ type Data struct {
 
 // Validate validates the data.
 // TODO: Add more validation for omitzero fields when they are set.
+// TODO: Need to write some tests for this.
 func (d Data) Validate() error {
 	if d.ResourcesContainer == 0 || d.ResourcesContainer >= ResourcesContainer(len(_ResourcesContainer_index)-1) {
 		return fmt.Errorf(".ChangedAction(%d) is invalid", d.ResourcesContainer)
@@ -88,13 +91,23 @@ func (d Data) Validate() error {
 		}
 
 		rscAPIVersion := ""
+		var rscType reflect.Type
 		for i, r := range d.Resources {
 			if err := r.Validate(); err != nil {
 				return fmt.Errorf(".Resources[%d]%w", i, err)
 			}
 
+			// All ARMResource.Properties must be of the same type. This either gets the type on the
+			// first iteration or validates that the type is the same on subsequent iterations.
+			// Also makes sure that APIVersion is set on all resources if it is not set on Data and that
+			// it matches if it is set on Data.
 			if i == 0 {
 				rscAPIVersion = r.APIVersion
+				rscType = reflect.TypeOf(r.ArmResource.Properties)
+			} else {
+				if unique.Make(rscType) != unique.Make(reflect.TypeOf(r)) {
+					return errors.New("all NotificationResource.ARMResource.Properties must be of the same type")
+				}
 			}
 
 			// If APIVersion is not set, it must be set on all resources.

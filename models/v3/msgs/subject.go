@@ -23,6 +23,25 @@ func asSlice(rid *arm.ResourceID) (rids []*arm.ResourceID) {
 	return rids
 }
 
+// subject returns in string form the maximal arm.ResourceID which is a shared prefix of all of the resources in res.  At least one
+// *types.NotificationResource must be passed to this function.
+func subject(res []types.NotificationResource) string {
+	if len(res) == 0 {
+		return ""
+	}
+	max := asSlice(res[0].ArmResource.ResourceID())
+
+	for i := 1; i < len(res); i++ {
+		max = maxSharedPrefix(max, asSlice(res[i].ArmResource.ResourceID()))
+	}
+
+	if len(max) <= 1 { // only the tenant-level scope was shared or no scopes were shared
+		return "/"
+	}
+
+	return max[0].String()
+}
+
 // maxSharedPrefix returns in slice form the maximal arm.ResourceID which is a shared prefix of a and b.
 func maxSharedPrefix(a, b []*arm.ResourceID) (results []*arm.ResourceID) {
 	// We can find the maximal arm.ResourceID which is a shared prefix of a and b by walking the slices backwards comparing their scopes.
@@ -41,23 +60,4 @@ func maxSharedPrefix(a, b []*arm.ResourceID) (results []*arm.ResourceID) {
 	slices.Reverse(results)
 
 	return results
-}
-
-// subject returns in string form the maximal arm.ResourceID which is a shared prefix of all of the resources in res.  At least one
-// *types.ResourceEvent must be passed to this function.
-func subject(res []types.NotificationResource) string {
-	if len(res) == 0 {
-		return ""
-	}
-	max := asSlice(res[0].ArmResource.ResourceID())
-
-	for i := 1; i < len(res); i++ {
-		max = maxSharedPrefix(max, asSlice(res[i].ArmResource.ResourceID()))
-	}
-
-	if len(max) <= 1 { // only the tenant-level scope was shared or no scopes were shared
-		return "/"
-	}
-
-	return max[0].String()
 }
