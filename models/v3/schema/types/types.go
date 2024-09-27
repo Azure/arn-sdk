@@ -29,7 +29,9 @@ const (
 	StatusCode = "OK"
 )
 
-// Data represents the data of the event. There are two ways to send the data:
+// Data represents the data of the event. THIS IS NOT USED DIRECTLY, BUT INSTEAD IS CREATED BY msgs.Notification.
+// THIS IS PUBLIC TO ALLOW FOR MARSHALING. NOT ALL FIELDS ARE CURRENTLY EXPOSED.
+// There are two ways to send the data:
 // 1. Inline: The resources being are included in the Resources field.
 // 2. Blob: The resources are stored in a blob and the information about the blob is included in ResourcesBlobInfo.
 // The ResourcesContainer field is used to determine if the resources are inline or in a blob.
@@ -40,7 +42,7 @@ type Data struct {
 	// This is a JSON serialized version of the Resources field.
 	Data json.RawMessage `json:"resources"`
 	// AdditionalBatchProperties can contain the sdkversion, batchsize, subscription partition tag etc.
-	AdditionalBatchProperties map[string]any `json:"additionalBatchProperties,omitzero"`
+	AdditionalBatchProperties AdditionalBatchProperties `json:"additionalBatchProperties"`
 	// ResourcesBlobInfo is the information about the storage blob used to store the payload of resources included in this notification.
 	// Populated only when a blob is used, in which case ResourcesContainer is set to Blob.
 	ResourcesBlobInfo ResourcesBlobInfo `json:"resourcesBlobInfo,omitzero"`
@@ -145,6 +147,23 @@ func (d Data) Validate() error {
 	}
 
 	return nil
+}
+
+// AdditionalBatchProperties is the additional properties that can be set on a batch of notifications.
+type AdditionalBatchProperties struct {
+	// BatchCorrelationID is a unique identifier for the batch of notifications. This can be used by
+	// ARN or ARG in traces. This is a GUID. Optional.
+	BatchCorrelationID string `json:"batchCorrelationId"`
+	// SDKVersion is the version of the SDK that is sending the notification.
+	// This is automaticallly set by the SDK.
+	SDKVersion string `json:"sdkVersion"`
+	// BatchSize is the number of resources in the batch. These may be inline or in a blob. This is
+	// automatically set by the SDK.
+	BatchSize uint16 `json:"batchSize"`
+	// Others is a map of additional properties that are provided by the user. These should not
+	// include keys that are already defined in the struct. These entries are inlined into the
+	// object when serialized.
+	Others map[string]any `json:",inline"`
 }
 
 // ResourcesBlobInfo is the information about the storage blob used to store the payload of resources
