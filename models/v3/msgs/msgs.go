@@ -30,6 +30,9 @@ var _ models.Notifications = Notifications{}
 // that is sent in the notification described in types.Data. The data will be converted to an Event and
 // sent over the wire.
 type Notifications struct {
+	// AdditionalBatchProperties can contain the sdkversion, batchsize, subscription partition tag etc.
+	AdditionalBatchProperties types.AdditionalBatchProperties
+
 	// ctx is the context for the notification. This honors the context deadline.
 	ctx context.Context
 	// Promise is a channel that will be used to send the result of the notification.
@@ -39,6 +42,9 @@ type Notifications struct {
 	// This is not required to be set if you are using Notify().
 	promise chan error
 
+	testSendHTTP func(*http.Client, envelope.Event) error
+	testSendBlob func(*storage.Client, []byte) (*url.URL, error)
+
 	// ResourceLocation is the location of the resources in this notification. This is the normalized ARM location enum
 	// like "eastus".
 	ResourceLocation string
@@ -46,14 +52,9 @@ type Notifications struct {
 	FrontdoorLocation string
 	// PublisherInfo is the Namespace of the publisher sending the data of this notification, for example Microsoft.Resources is be the publisherInfo for ARM.
 	PublisherInfo string
-	// AdditionalBatchProperties can contain the sdkversion, batchsize, subscription partition tag etc.
-	AdditionalBatchProperties types.AdditionalBatchProperties
 
 	// Data is the data to send in the notification.
 	Data []types.NotificationResource
-
-	testSendHTTP func(*http.Client, envelope.Event) error
-	testSendBlob func(*storage.Client, []byte) (*url.URL, error)
 }
 
 // Promise waits for the promise to be fulfilled. This will return an ErrPromiseTimeout if the context

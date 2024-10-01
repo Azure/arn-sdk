@@ -166,8 +166,7 @@ Example - sending a notification asynchronously using the v3 model using a AKS n
 	for _, notification := range notifications {
 		arnClient.Async(ctx, notificiation, false)
 	}
-*/
-package client
+*/package client
 
 import (
 	"context"
@@ -188,19 +187,18 @@ import (
 
 // ARN is a client for interacting with the ARN service.
 type ARN struct {
-	logger *slog.Logger
-	conn   *conn.Service
+	meterProvider metric.MeterProvider
+	logger        *slog.Logger
+	conn          *conn.Service
 
 	in   chan models.Notifications
 	errs chan error
-
-	orderID atomic.Uint64
 
 	testConn func(n models.Notifications)
 
 	sigSenderClosed chan struct{}
 
-	meterProvider metric.MeterProvider
+	orderID atomic.Uint64
 }
 
 // Option is a function that sets an option on the client.
@@ -237,13 +235,13 @@ func WithMeterProvider(m metric.MeterProvider) Option {
 
 // Args are the arguments for creating a new ARN client.
 type Args struct {
-	// HTTP is used to configure the HTTP client to talk to ARN.
-	HTTP HTTPArgs
 
 	// Blob is the blob storage client used for large messages.
 	Blob BlobArgs
 
 	logger *slog.Logger
+	// HTTP is used to configure the HTTP client to talk to ARN.
+	HTTP HTTPArgs
 }
 
 // toClients creates an http and storage client from the args. This also
@@ -295,12 +293,12 @@ func (a Args) validate() error {
 
 // HTTPArgs are the arguments for creating a new ARN HTTP client.
 type HTTPArgs struct {
-	// Endpoint is the ARN endpoint.
-	Endpoint string
 	// Cred is the token credential to use for authentication to ARN.
 	Cred azcore.TokenCredential
 	// Opts are opttions for the azcore HTTP client.
 	Opts *policy.ClientOptions
+	// Endpoint is the ARN endpoint.
+	Endpoint string
 	// Compression is a flag to enable deflate compression on the HTTP client.
 	Compression bool
 }
@@ -317,18 +315,18 @@ func (a HTTPArgs) validate() error {
 
 // BlobArgs are the arguments for creating a new ARN blob client used for large transfers.
 type BlobArgs struct {
-	// Endpoint is the blob storage endpoint.
-	Endpoint string
 	// Cred is the token credential to use for authentication to blob storage.
 	Cred azcore.TokenCredential
+	// Opts are opttions for the azcore HTTP client.
+	Opts *policy.ClientOptions
+	// Endpoint is the blob storage endpoint.
+	Endpoint string
 	// ContainerExt sets a name extension for a blob container. This can be useful for
 	// doing discovery of containers that are created by a particular client.
 	// Names are in the format "arm-ext-nt-YYYY-MM-DD". This will cause the client to create
 	// "arm-ext-nt-[ext]-YYYY-MM-DD". Note characters must be letters, numbers, or hyphens.
 	// Any letters will be automatically lowercased. The ext cannot be more than 41 characters.
 	ContainerExt string
-	// Opts are opttions for the azcore HTTP client.
-	Opts *policy.ClientOptions
 }
 
 func (a BlobArgs) validate() error {

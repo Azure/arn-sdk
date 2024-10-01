@@ -21,15 +21,15 @@ var PromisePool = sync.Pool{
 
 // Reset provides a REST connection to the ARN service.
 type Service struct {
-	endpoint   string
 	http       *http.Client
 	store      *storage.Client
 	clientErrs chan error
 	in         chan models.Notifications
 
-	id atomic.Uint64
+	log      *slog.Logger
+	endpoint string
 
-	log *slog.Logger
+	id atomic.Uint64
 }
 
 type Option func(*Service) error

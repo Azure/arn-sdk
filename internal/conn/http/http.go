@@ -56,8 +56,8 @@ var flatePool = sync.Pool{
 
 // flateTransport is a custom RoundTripper that applies Deflate compression at the desired level.
 type flateTransport struct {
-	deflateLevel int
 	flatePool    chan *flate.Writer
+	deflateLevel int
 }
 
 func newFlateTransport() *flateTransport {
@@ -119,8 +119,8 @@ func (t *flateTransport) Do(req *policy.Request) (*http.Response, error) {
 
 // Client is a client for interacting with the ARN receiver API.
 type Client struct {
-	endpoint string
 	client   *azcore.Client
+	endpoint string
 	compress bool
 }
 

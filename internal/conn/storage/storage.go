@@ -25,8 +25,7 @@ Changes from the original:
 - Removed use of "to" package for pointer creation, replaced with a simple generic function
 - Wrote tests and changed structure to help with testing
 - Did some re-ordering of events to avoid making unnecessary calls in certain failiure cases
-*/
-package storage
+*/package storage
 
 import (
 	"context"
@@ -48,15 +47,16 @@ import (
 // Client is a client for interacting with Azure Blob Storage for pushing and pulling data
 // used by the ARN service.
 type Client struct {
-	now           func() time.Time
-	cli           *service.Client
-	clientOptions policy.ClientOptions
-	creds         *credCache
-	contExt       string
+	now   func() time.Time
+	cli   *service.Client
+	creds *credCache
 
 	log *slog.Logger
 
 	fakeSignParams func(sigVals sas.BlobSignatureValues, cred *service.UserDelegationCredential) (encoder, error)
+	contExt        string
+
+	clientOptions policy.ClientOptions
 }
 
 // Option is a function that sets an option on the client.
