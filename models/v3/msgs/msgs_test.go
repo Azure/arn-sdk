@@ -374,6 +374,10 @@ func TestToEvent(t *testing.T) {
 					ResourceLocation:   "location",
 					PublisherInfo:      "publisher",
 					Resources:          []types.NotificationResource{{}},
+					AdditionalBatchProperties: types.AdditionalBatchProperties{
+						SDKVersion: "golang@0.1.0",
+						BatchSize:  1,
+					},
 				},
 			},
 		},
