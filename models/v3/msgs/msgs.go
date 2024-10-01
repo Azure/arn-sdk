@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
 	"time"
 
@@ -26,7 +27,8 @@ import (
 var _ models.Notifications = Notifications{}
 
 // Notifications is a notification to send to the ARN service. This is a wrapper around the actual data
-// that is sent in the notification. The data will be converted to an Event and sent over the wire.
+// that is sent in the notification described in types.Data. The data will be converted to an Event and
+// sent over the wire.
 type Notifications struct {
 	// ctx is the context for the notification. This honors the context deadline.
 	ctx context.Context
@@ -40,10 +42,12 @@ type Notifications struct {
 	// ResourceLocation is the location of the resources in this notification. This is the normalized ARM location enum
 	// like "eastus".
 	ResourceLocation string
+	// FrontdoorLocation is the ARM region that emitted the notification. Omitted for notifications not emitted by ARM.
+	FrontdoorLocation string
 	// PublisherInfo is the Namespace of the publisher sending the data of this notification, for example Microsoft.Resources is be the publisherInfo for ARM.
 	PublisherInfo string
 	// AdditionalBatchProperties can contain the sdkversion, batchsize, subscription partition tag etc.
-	AdditionalBatchProperties map[string]any
+	AdditionalBatchProperties types.AdditionalBatchProperties
 
 	// Data is the data to send in the notification.
 	Data []types.NotificationResource
@@ -212,11 +216,19 @@ func (n Notifications) toEvent() ([]byte, envelope.Event, error) {
 		return dataJSON, envelope.Event{}, fmt.Errorf("problem creating an EventMeta: %w", err)
 	}
 
+	if len(n.Data) > math.MaxUint16 {
+		return dataJSON, envelope.Event{}, fmt.Errorf("too many resources to send in a single event: %d", len(n.Data))
+	}
+
+	n.AdditionalBatchProperties.BatchSize = uint16(len(n.Data))
+	n.AdditionalBatchProperties.SDKVersion = version.SDK.AsARNFormat()
+
 	if inline {
 		return dataJSON, envelope.Event{
 			EventMeta: meta,
 			Data: types.Data{
 				Data:                      dataJSON,
+				FrontdoorLocation:         n.FrontdoorLocation,
 				AdditionalBatchProperties: n.AdditionalBatchProperties,
 				ResourcesContainer:        types.RCInline,
 				ResourceLocation:          n.ResourceLocation,
