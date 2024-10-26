@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"path"
 	"sync"
+	"testing"
 
 	"github.com/Azure/arn-sdk/internal/build"
 
@@ -122,6 +123,8 @@ type Client struct {
 	endpoint string
 	client   *azcore.Client
 	compress bool
+
+	fakeSender Sender
 }
 
 // Option is a function that configures the client.
@@ -131,6 +134,23 @@ type Option func(*Client) error
 func WithoutCompression() Option {
 	return func(c *Client) error {
 		c.compress = false
+		return nil
+	}
+}
+
+// Sender is an interface to provide a fake sender for testing.
+type Sender interface {
+	Send(ctx context.Context, event []byte) error
+}
+
+// WithFake configures the client to use a fake sender for testing.
+// This will be used instead of .Send(). Can only be used in tests.
+func WithFake(s Sender) Option {
+	return func(c *Client) error {
+		if !testing.Testing() {
+			return fmt.Errorf("http.WithFakeSender() can only be used in tests")
+		}
+		c.fakeSender = s
 		return nil
 	}
 }
@@ -149,6 +169,10 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 		if err := option(c); err != nil {
 			return nil, err
 		}
+	}
+
+	if c.fakeSender != nil {
+		return c, nil
 	}
 
 	var scope = scopeDefault
@@ -182,6 +206,10 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 
 // Send sends an event (converted to JSON bytes) to the ARN receiver API.
 func (c *Client) Send(ctx context.Context, event []byte) error {
+	if c.fakeSender != nil {
+		return c.fakeSender.Send(ctx, event)
+	}
+
 	read := readerPool.Get().(*bytes.Reader)
 	read.Reset(event)
 	defer readerPool.Put(read)

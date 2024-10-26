@@ -34,6 +34,7 @@ import (
 	"log/slog"
 	"net/url"
 	"regexp"
+	"testing"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -55,6 +56,9 @@ type Client struct {
 	contExt       string
 
 	log *slog.Logger
+
+	// fakeUploader is used for testing purposes to simulate this client's response.
+	fakeUploader Uploader
 
 	fakeSignParams func(sigVals sas.BlobSignatureValues, cred *service.UserDelegationCredential) (encoder, error)
 }
@@ -96,6 +100,24 @@ func WithContainerExt(ext string) Option {
 	}
 }
 
+// Uploader is an interface for testing purposes to simulate the Upload() method.
+type Uploader interface {
+	// Upload simulates the Upload() method.
+	Upload(ctx context.Context, id string, b []byte) (*url.URL, error)
+}
+
+// WithFake sets a fake uploader for testing purposes. This will cause the client to use the fake
+// Upload() method instead of the real one. Can only be used in testing.
+func WithFake(f Uploader) Option {
+	return func(c *Client) error {
+		if !testing.Testing() {
+			return fmt.Errorf("storage.WithFake() can only be used in testing")
+		}
+		c.fakeUploader = f
+		return nil
+	}
+}
+
 // New creates a new storage client. endpoint is the Azure Blob Storage endpoint, cred is the
 // Azure SDK TokenCredential, and opts are the policy options for the service.Client.
 func New(endpoint string, cred azcore.TokenCredential, options ...Option) (*Client, error) {
@@ -111,6 +133,10 @@ func New(endpoint string, cred azcore.TokenCredential, options ...Option) (*Clie
 
 	if client.log == nil {
 		client.log = slog.Default()
+	}
+
+	if client.fakeUploader != nil {
+		return client, nil
 	}
 
 	sClient, err := service.NewClient(endpoint, cred, &service.ClientOptions{ClientOptions: client.clientOptions})
@@ -132,6 +158,9 @@ func New(endpoint string, cred azcore.TokenCredential, options ...Option) (*Clie
 
 // Close closes the client.
 func (c *Client) Close() {
+	if c.fakeUploader != nil {
+		return
+	}
 	c.creds.close()
 }
 
@@ -139,6 +168,10 @@ func (c *Client) Close() {
 func (c *Client) Upload(ctx context.Context, id string, b []byte) (*url.URL, error) {
 	const contPrefix = "arm-ext-nt"
 	var cName string
+
+	if c.fakeUploader != nil {
+		return c.fakeUploader.Upload(ctx, id, b)
+	}
 
 	if c.contExt == "" {
 		cName = fmt.Sprintf("%s-%s", contPrefix, c.now().UTC().Format(time.DateOnly))

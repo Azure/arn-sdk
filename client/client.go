@@ -174,6 +174,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync/atomic"
+	"testing"
 
 	"github.com/Azure/arn-sdk/internal/conn"
 	"github.com/Azure/arn-sdk/internal/conn/http"
@@ -201,6 +202,9 @@ type ARN struct {
 	sigSenderClosed chan struct{}
 
 	meterProvider metric.MeterProvider
+
+	fakeSender   Sender
+	fakeUploader Uploader
 }
 
 // Option is a function that sets an option on the client.
@@ -231,6 +235,30 @@ func WithMeterProvider(m metric.MeterProvider) Option {
 			return fmt.Errorf("meter cannot be nil")
 		}
 		r.meterProvider = m
+		return nil
+	}
+}
+
+// Sender is a fake sender for testing.
+type Sender = http.Sender
+
+// Uploader is a fake uploader for testing.
+type Uploader = storage.Uploader
+
+// WithFakeClients sets the fake clients on the ARN client. This is only valid in testing.
+func WithFakeClients(fs Sender, fu Uploader) Option {
+	return func(c *ARN) error {
+		if !testing.Testing() {
+			return fmt.Errorf("fake clients can only be used in testing")
+		}
+		if fs == nil {
+			return fmt.Errorf("fake sender cannot be nil")
+		}
+		if fu == nil {
+			return fmt.Errorf("fake uploader cannot be nil")
+		}
+		c.fakeSender = fs
+		c.fakeUploader = fu
 		return nil
 	}
 }
@@ -358,11 +386,28 @@ func New(ctx context.Context, args Args, options ...Option) (*ARN, error) {
 	}
 
 	args.logger = a.logger
-	h, s, err := args.toClients()
-	if err != nil {
-		return nil, fmt.Errorf("problem getting clients: %v", err)
+
+	var h *http.Client
+	var s *storage.Client
+	if a.fakeSender == nil {
+		var err error
+		h, s, err = args.toClients()
+		if err != nil {
+			return nil, fmt.Errorf("problem getting clients: %v", err)
+		}
+	} else {
+		var err error
+		h, err = http.New("", nil, nil, http.WithFake(a.fakeSender))
+		if err != nil {
+			return nil, fmt.Errorf("problem getting clients: %v", err)
+		}
+		s, err = storage.New("", nil, storage.WithFake(a.fakeUploader))
+		if err != nil {
+			return nil, fmt.Errorf("problem getting clients: %v", err)
+		}
 	}
 
+	var err error
 	a.conn, err = conn.New(h, s, a.errs, conn.WithLogger(a.logger))
 	if err != nil {
 		return nil, fmt.Errorf("problem with conn client: %v", err)

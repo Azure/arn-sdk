@@ -82,6 +82,7 @@ func (n Notifications) Promise(ctx context.Context) error {
 }
 
 // Recycle can be used to recycle the promise of a notification once it has been used.
+// This is for internal use and should not be called.
 // It is a terrible idea to use the promise after it has been recycled.
 func (n Notifications) Recycle() {
 	if n.promise != nil {
@@ -227,13 +228,13 @@ func (n Notifications) toEvent() ([]byte, envelope.Event, error) {
 		return dataJSON, envelope.Event{
 			EventMeta: meta,
 			Data: types.Data{
-				Data:                      dataJSON,
+				Data:                      dataJSON, // This serializes into the "Resources" field.
 				FrontdoorLocation:         n.FrontdoorLocation,
 				AdditionalBatchProperties: n.AdditionalBatchProperties,
 				ResourcesContainer:        types.RCInline,
 				ResourceLocation:          n.ResourceLocation,
 				PublisherInfo:             n.PublisherInfo,
-				Resources:                 n.Data,
+				Resources:                 n.Data, // This doesn't serialize into JSON, only the "Data" field does, which actually replaces this field.
 			},
 		}, nil
 	}
@@ -241,10 +242,12 @@ func (n Notifications) toEvent() ([]byte, envelope.Event, error) {
 	return dataJSON, envelope.Event{
 		EventMeta: meta,
 		Data: types.Data{
-			ResourcesContainer: types.RCBlob,
-			ResourceLocation:   n.ResourceLocation,
-			PublisherInfo:      n.PublisherInfo,
-			Resources:          n.Data,
+			FrontdoorLocation:         n.FrontdoorLocation,
+			AdditionalBatchProperties: n.AdditionalBatchProperties,
+			ResourcesContainer:        types.RCBlob,
+			ResourceLocation:          n.ResourceLocation,
+			PublisherInfo:             n.PublisherInfo,
+			Resources:                 n.Data, // This doesn't serialize into JSON, only the "Data" field does, which actually replaces this field.
 		},
 	}, nil
 }
