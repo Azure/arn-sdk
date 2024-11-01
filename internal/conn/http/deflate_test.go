@@ -2,7 +2,7 @@ package http
 
 import (
 	"bytes"
-	"compress/flate"
+	"compress/zlib"
 	"context"
 	"fmt"
 	"io"
@@ -38,7 +38,10 @@ func (h *httpHandler) handleDeflateRequest(w http.ResponseWriter, r *http.Reques
 	if r.Header.Get("Content-Encoding") == "deflate" {
 		h.countA.Add(1)
 		// Wrap the request body in a flate.Reader to decompress it
-		deflateReader := flate.NewReader(r.Body)
+		deflateReader, err := zlib.NewReader(r.Body)
+		if err != nil {
+			panic(err)
+		}
 		defer deflateReader.Close()
 
 		// Read the decompressed data

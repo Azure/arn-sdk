@@ -33,6 +33,8 @@ type Attrs interface {
 	DataCount() int
 	// Version returns the schema version of the API.
 	Version() version.Schema
+	// GetPublisherInfo returns the publisher information for the notification.
+	GetPublisherInfo() string
 }
 
 // Senders is an interface that must be implemented by all notification types across models.

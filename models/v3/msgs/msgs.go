@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/Azure/arn-sdk/internal/conn"
@@ -108,6 +109,12 @@ func (n Notifications) Version() version.Schema {
 	return version.V3
 }
 
+// GetPublisherInfo implements models.Notifications.GetPublisherInfo().
+func (n Notifications) GetPublisherInfo() string {
+	return n.PublisherInfo
+}
+
+// SetCtx implements models.Notifications.SetCtx().
 func (n Notifications) SetCtx(ctx context.Context) models.Notifications {
 	n.ctx = ctx
 	return n
@@ -252,6 +259,12 @@ func (n Notifications) toEvent() ([]byte, envelope.Event, error) {
 	}, nil
 }
 
+var headerPool = sync.Pool{
+	New: func() any {
+		return make([]string, 2)
+	},
+}
+
 func (n Notifications) sendHTTP(hc *http.Client, event envelope.Event) error {
 	if n.testSendHTTP != nil {
 		return n.testSendHTTP(hc, event)
@@ -262,7 +275,12 @@ func (n Notifications) sendHTTP(hc *http.Client, event envelope.Event) error {
 		return err
 	}
 
-	return hc.Send(n.ctx, b)
+	headers := headerPool.Get().([]string)
+	headers[0] = "publisherinfo"
+	headers[1] = event.Data.PublisherInfo
+	defer headerPool.Put(headers)
+
+	return hc.Send(n.ctx, b, headers)
 }
 
 func (n Notifications) sendBlob(store *storage.Client, dataJSON []byte) (*url.URL, error) {
