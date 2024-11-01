@@ -4,7 +4,7 @@ package http
 
 import (
 	"bytes"
-	"compress/flate"
+	"compress/zlib"
 	"context"
 	"fmt"
 	"io"
@@ -55,20 +55,20 @@ var flatePool = sync.Pool{
 	},
 }
 
-// flateTransport is a custom RoundTripper that applies Deflate compression at the desired level.
-type flateTransport struct {
+// zlibTransport is a custom RoundTripper that applies Deflate compression at the desired level.
+type zlibTransport struct {
 	deflateLevel int
-	flatePool    chan *flate.Writer
+	flatePool    chan *zlib.Writer
 }
 
-func newFlateTransport() *flateTransport {
-	return &flateTransport{
-		flatePool: make(chan *flate.Writer, 20),
+func newFlateTransport() *zlibTransport {
+	return &zlibTransport{
+		flatePool: make(chan *zlib.Writer, 20),
 	}
 }
 
 // Do performs the actual request and compresses the body using Deflate.
-func (t *flateTransport) Do(req *policy.Request) (*http.Response, error) {
+func (t *zlibTransport) Do(req *policy.Request) (*http.Response, error) {
 	// Get the underlying http.Request
 	httpReq := req.Raw()
 
@@ -88,11 +88,11 @@ func (t *flateTransport) Do(req *policy.Request) (*http.Response, error) {
 			flatePool.Put(compressedBuffer)
 		}()
 
-		var writer *flate.Writer
+		var writer *zlib.Writer
 		select {
 		case writer = <-t.flatePool:
 		default:
-			writer, err = flate.NewWriter(compressedBuffer, 5)
+			writer, err = zlib.NewWriterLevel(compressedBuffer, 5)
 			if err != nil {
 				return nil, err
 			}
@@ -205,16 +205,19 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 }
 
 // Send sends an event (converted to JSON bytes) to the ARN receiver API.
-func (c *Client) Send(ctx context.Context, event []byte) error {
+func (c *Client) Send(ctx context.Context, event []byte, headers []string) error {
 	if c.fakeSender != nil {
 		return c.fakeSender.Send(ctx, event)
+	}
+	if len(headers)%2 != 0 {
+		return fmt.Errorf("headers must be key-value pairs")
 	}
 
 	read := readerPool.Get().(*bytes.Reader)
 	read.Reset(event)
 	defer readerPool.Put(read)
 
-	req, err := c.setup(ctx, read)
+	req, err := c.setup(ctx, read, headers)
 	if err != nil {
 		return err
 	}
@@ -235,7 +238,7 @@ func (c *Client) Send(ctx context.Context, event []byte) error {
 var appJSON = []string{"application/json"}
 
 // setup creates a new request with the event as the body.
-func (c *Client) setup(ctx context.Context, event *bytes.Reader) (*policy.Request, error) {
+func (c *Client) setup(ctx context.Context, event *bytes.Reader, headers []string) (*policy.Request, error) {
 	if event.Len() == 0 {
 		return nil, fmt.Errorf("event is empty")
 	}
@@ -247,6 +250,9 @@ func (c *Client) setup(ctx context.Context, event *bytes.Reader) (*policy.Reques
 		return nil, err
 	}
 	req.Raw().Header["Accept"] = appJSON
+	for i := 0; i < len(headers); i += 2 {
+		req.Raw().Header.Add(headers[i], headers[i+1])
+	}
 	return req, req.SetBody(r, "application/json")
 }
 
