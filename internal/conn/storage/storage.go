@@ -246,7 +246,7 @@ func (c *Client) upload(ctx context.Context, args uploadArgs) (*url.URL, error) 
 		BlobName:      args.bName,
 	}
 
-	c.log.Info(fmt.Sprintf("Uploading to blob. Container: %s, Blob: %s", args.cName, args.bName))
+	c.log.Debug(fmt.Sprintf("Uploading to blob. Container: %s, Blob: %s", args.cName, args.bName))
 
 	enc, err := c.signParams(sigVals, cred)
 	if err != nil {
