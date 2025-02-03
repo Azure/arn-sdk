@@ -147,6 +147,10 @@ func (n Notifications) SendPromise(e error, backupCh chan error) {
 	}
 }
 
+func EventType(res types.NotificationResource) string {
+	return fmt.Sprintf("%s/%s", res.ArmResource.Type, res.ArmResource.Activity().String())
+}
+
 // dataToJSON returns the JSON representation of the data in the notification.
 // Once this is called, the data is cached. So new data added to the Notification will not be included in the JSON.
 func (n Notifications) dataToJSON() ([]byte, error) {
@@ -324,6 +328,6 @@ func newEventMeta(data []types.NotificationResource) (envelope.EventMeta, error)
 		DataVersion:     version.V3,
 		MetadataVersion: "1.0",
 		EventTime:       nower().UTC(),
-		EventType:       fmt.Sprintf("%s/%s", data[0].ArmResource.Type, data[0].ArmResource.Activity().String()),
+		EventType:       EventType(data[0]),
 	}, nil
 }
