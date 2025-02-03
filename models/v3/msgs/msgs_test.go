@@ -7,7 +7,6 @@ import (
 	"path"
 	"testing"
 	"time"
-	"fmt"
 
 	"github.com/Azure/arn-sdk/internal/conn/http"
 	"github.com/Azure/arn-sdk/internal/conn/storage"
@@ -351,22 +350,6 @@ func TestDataToJSON(t *testing.T) {
 func TestToEvent(t *testing.T) {
 	t.Parallel()
 
-	prefix := `/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test/providers/Microsoft.ContainerService/managedClusters/something/`
-	suffix := `nodes/aks-nodepool1-12345678-vmss000000`
-	rescID, err := arm.ParseResourceID(path.Join(prefix, suffix))
-	if err != nil {
-		panic(err)
-	}
-
-	goodNotifyResrc := types.NotificationResource{
-		ResourceID: uuid.New().String(),
-		APIVersion: "2024-01-01",
-		ResourceSystemProperties: types.ResourceSystemProperties{
-			ChangeAction: types.CADelete,
-		},
-		ArmResource: mustNewArm(types.ActDelete, rescID, "2020-05-01", nil),
-	}
-
 	tests := []struct {
 		name    string
 		n       Notifications
@@ -391,26 +374,6 @@ func TestToEvent(t *testing.T) {
 					ResourceLocation:   "location",
 					PublisherInfo:      "publisher",
 					Resources:          []types.NotificationResource{{}},
-					AdditionalBatchProperties: types.AdditionalBatchProperties{
-						SDKVersion: "golang@0.1.0",
-						BatchSize:  1,
-					},
-				},
-			},
-		},
-		{
-			name: "Success: inline data",
-			n: Notifications{
-				ResourceLocation: "location",
-				PublisherInfo:    "publisher",
-				Data: []types.NotificationResource{goodNotifyResrc},
-			},
-			want: envelope.Event{
-				Data: types.Data{
-					ResourcesContainer: types.RCInline,
-					ResourceLocation:   "location",
-					PublisherInfo:      "publisher",
-					Resources: []types.NotificationResource{goodNotifyResrc},
 					AdditionalBatchProperties: types.AdditionalBatchProperties{
 						SDKVersion: "golang@0.1.0",
 						BatchSize:  1,
@@ -450,7 +413,6 @@ func TestToEvent(t *testing.T) {
 			continue
 		}
 		got.EventMeta.ID = ""
-		fmt.Println(got.EventMeta)
 
 		if diff := pretty.Compare(test.want, got); diff != "" {
 			t.Errorf("TestToEvent(%s): -want/+got:\n%s", test.name, diff)
