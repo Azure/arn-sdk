@@ -240,7 +240,7 @@ func (c *Client) upload(ctx context.Context, args uploadArgs) (*url.URL, error) 
 	sigVals := sas.BlobSignatureValues{
 		Protocol:      sas.ProtocolHTTPS,
 		StartTime:     time.Now().UTC().Add(time.Second * -10),
-		ExpiryTime:    c.now().UTC().Add(1 * time.Hour),
+		ExpiryTime:    c.now().UTC().Add(7 * 24 * time.Hour),
 		Permissions:   (&sas.BlobPermissions{Read: true}).String(),
 		ContainerName: args.cName,
 		BlobName:      args.bName,
