@@ -166,18 +166,13 @@ func (c *Client) Close() {
 
 // Upload uploads bytes to a blob named id in today's container.  It returns a SAS link enabling the blob to be read.
 func (c *Client) Upload(ctx context.Context, id string, b []byte) (*url.URL, error) {
-	const contPrefix = "arm-ext-nt"
 	var cName string
 
 	if c.fakeUploader != nil {
 		return c.fakeUploader.Upload(ctx, id, b)
 	}
 
-	if c.contExt == "" {
-		cName = fmt.Sprintf("%s-%s-%d", contPrefix, c.now().UTC().Format(time.DateOnly), time.Now().Hour())
-	} else {
-		cName = fmt.Sprintf("%s-%s-%s-%d", contPrefix, c.contExt, c.now().UTC().Format(time.DateOnly), time.Now().Hour())
-	}
+	cName = c.cName()
 	bName := id + ".txt"
 
 	cClient := c.cli.NewContainerClient(cName)
@@ -199,6 +194,15 @@ func (c *Client) Upload(ctx context.Context, id string, b []byte) (*url.URL, err
 	}
 
 	return c.upload(ctx, args)
+}
+
+// cName returns the container name to be used.
+func (c *Client) cName() string {
+	const contPrefix = "arm-ext-nt"
+	if c.contExt == "" {
+		return fmt.Sprintf("%s-%s-%d", contPrefix, c.now().UTC().Format(time.DateOnly), c.now().Hour())
+	}
+	return fmt.Sprintf("%s-%s-%s-%d", contPrefix, c.contExt, c.now().UTC().Format(time.DateOnly), c.now().Hour())
 }
 
 // uploadBuffer is an interface for uploading a buffer. Implemented by *blockblob.BlockBlobClient.
