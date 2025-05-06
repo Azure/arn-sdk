@@ -87,8 +87,8 @@ var contRE = regexp.MustCompile(`^[a-z0-9-]{1,41}$`)
 
 // WithContainerExt sets a name extension for a blob container. This can be useful for
 // doing discovery of containers that are created by a particular client.
-// Names are in the format "arm-ext-nt-YYYY-MM-DD". This will cause the client to create
-// "arm-ext-nt-[ext]-YYYY-MM-DD". Note characters must be letters, numbers, or hyphens.
+// Names are in the format "arm-ext-nt-YYYY-MM-DD-HH". This will cause the client to create
+// "arm-ext-nt-[ext]-YYYY-MM-DD-HH". Note characters must be letters, numbers, or hyphens.
 // Any letters will be automatically lowercased. The ext cannot be more than 41 characters.
 func WithContainerExt(ext string) Option {
 	return func(c *Client) error {
@@ -174,9 +174,9 @@ func (c *Client) Upload(ctx context.Context, id string, b []byte) (*url.URL, err
 	}
 
 	if c.contExt == "" {
-		cName = fmt.Sprintf("%s-%s", contPrefix, c.now().UTC().Format(time.DateOnly))
+		cName = fmt.Sprintf("%s-%s-%d", contPrefix, c.now().UTC().Format(time.DateOnly), time.Now().Hour())
 	} else {
-		cName = fmt.Sprintf("%s-%s-%s", contPrefix, c.contExt, c.now().UTC().Format(time.DateOnly))
+		cName = fmt.Sprintf("%s-%s-%s-%d", contPrefix, c.contExt, c.now().UTC().Format(time.DateOnly), time.Now().Hour())
 	}
 	bName := id + ".txt"
 
