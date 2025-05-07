@@ -246,3 +246,45 @@ func TestHandleUploadErr(t *testing.T) {
 	}
 
 }
+
+func TestCName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		now      func() time.Time
+		contExt  string
+		expected string
+	}{
+		{
+			name: "Default container name without extension",
+			now: func() time.Time {
+				return time.Date(2023, 10, 1, 15, 0, 0, 0, time.UTC)
+			},
+			contExt:  "",
+			expected: "arm-ext-nt-2023-10-01-15",
+		},
+		{
+			name: "Container name with extension",
+			now: func() time.Time {
+				return time.Date(2023, 10, 1, 15, 0, 0, 0, time.UTC)
+			},
+			contExt:  "my-extension",
+			expected: "arm-ext-nt-my-extension-2023-10-01-15",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := &Client{
+				now:     test.now,
+				contExt: test.contExt,
+			}
+
+			got := client.cName()
+			if got != test.expected {
+				t.Errorf("TestCName(%s): got %s, want %s", test.name, got, test.expected)
+			}
+		})
+	}
+}
