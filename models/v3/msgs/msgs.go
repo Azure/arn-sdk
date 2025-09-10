@@ -50,6 +50,13 @@ type Notifications struct {
 	// AdditionalBatchProperties can contain the sdkversion, batchsize, subscription partition tag etc.
 	AdditionalBatchProperties types.AdditionalBatchProperties
 
+	// HomeTenantID is the tenant from which the resources in this notification are managed.
+	// This should be set by caller for provider-scoped resources per ARN V3 spec.
+	HomeTenantID string `json:"homeTenantId,omitzero"`
+	// ResourceHomeTenantID is the tenant in which the resources in this notification exist.
+	// This should be set by caller for provider-scoped resources per ARN V3 spec.
+	ResourceHomeTenantID string `json:"resourceHomeTenantId,omitzero"`
+
 	// Data is the data to send in the notification.
 	Data []types.NotificationResource
 
@@ -246,6 +253,8 @@ func (n Notifications) toEvent() ([]byte, envelope.Event, error) {
 				ResourceLocation:          n.ResourceLocation,
 				PublisherInfo:             n.PublisherInfo,
 				Resources:                 n.Data, // This doesn't serialize into JSON, only the "Data" field does, which actually replaces this field.
+				HomeTenantID:              n.HomeTenantID,
+				ResourceHomeTenantID:      n.ResourceHomeTenantID,
 			},
 		}, nil
 	}
@@ -259,6 +268,8 @@ func (n Notifications) toEvent() ([]byte, envelope.Event, error) {
 			ResourceLocation:          n.ResourceLocation,
 			PublisherInfo:             n.PublisherInfo,
 			Resources:                 n.Data, // This doesn't serialize into JSON, only the "Data" field does, which actually replaces this field.
+			HomeTenantID:              n.HomeTenantID,
+			ResourceHomeTenantID:      n.ResourceHomeTenantID,
 		},
 	}, nil
 }

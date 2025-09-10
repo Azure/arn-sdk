@@ -93,6 +93,7 @@ func (d Data) Validate() error {
 
 		rscAPIVersion := ""
 		var rscType [2]string
+		var rscHomeTenantID, rscResourceHomeTenantID string // Track first resource's tenant IDs
 		for i, r := range d.Resources {
 			if err := r.Validate(); err != nil {
 				return fmt.Errorf(".Resources[%d]%w", i, err)
@@ -110,6 +111,8 @@ func (d Data) Validate() error {
 				rscAPIVersion = r.APIVersion
 				rscType[0] = r.ArmResource.arm.ResourceType.Namespace
 				rscType[1] = r.ArmResource.arm.ResourceType.Type
+				rscHomeTenantID = r.HomeTenantID
+				rscResourceHomeTenantID = r.ResourceHomeTenantID
 			} else {
 				compare := [2]string{
 					r.ArmResource.arm.ResourceType.Namespace,
@@ -130,6 +133,39 @@ func (d Data) Validate() error {
 				if d.APIVersion != r.APIVersion && r.APIVersion != "" {
 					return errors.New("NotificationResource.APIVersion must match Data.APIVersion if set")
 				}
+			}
+
+			// Validate tenant ID consistency, per ARN V3 spec: "If present at both levels, the values should be the same"
+			// if child has tenant IDs, parent must have them too (and they must match)
+			if r.HomeTenantID != "" {
+				if d.HomeTenantID == "" {
+					return fmt.Errorf(".Resources[%d].HomeTenantID is set to %q but Data.HomeTenantID is empty - both must be set for consistency",
+						i, r.HomeTenantID)
+				}
+				if d.HomeTenantID != r.HomeTenantID {
+					return fmt.Errorf(".Resources[%d].HomeTenantID %q must match Data.HomeTenantID %q",
+						i, r.HomeTenantID, d.HomeTenantID)
+				}
+			}
+			if r.ResourceHomeTenantID != "" {
+				if d.ResourceHomeTenantID == "" {
+					return fmt.Errorf(".Resources[%d].ResourceHomeTenantID is set to %q but Data.ResourceHomeTenantID is empty - both must be set for consistency",
+						i, r.ResourceHomeTenantID)
+				}
+				if d.ResourceHomeTenantID != r.ResourceHomeTenantID {
+					return fmt.Errorf(".Resources[%d].ResourceHomeTenantID %q must match Data.ResourceHomeTenantID %q",
+						i, r.ResourceHomeTenantID, d.ResourceHomeTenantID)
+				}
+			}
+
+			// Ensure all resources have same tenant IDs (following APIVersion pattern above)
+			if rscHomeTenantID != r.HomeTenantID {
+				return fmt.Errorf(".Resources[%d].HomeTenantID %q must match other resources (%q)",
+					i, r.HomeTenantID, rscHomeTenantID)
+			}
+			if rscResourceHomeTenantID != r.ResourceHomeTenantID {
+				return fmt.Errorf(".Resources[%d].ResourceHomeTenantID %q must match other resources (%q)",
+					i, r.ResourceHomeTenantID, rscResourceHomeTenantID)
 			}
 
 			if rscAPIVersion != r.APIVersion {

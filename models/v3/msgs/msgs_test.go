@@ -3,8 +3,10 @@ package msgs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -366,14 +368,14 @@ func TestToEvent(t *testing.T) {
 			n: Notifications{
 				ResourceLocation: "location",
 				PublisherInfo:    "publisher",
-				Data:             []types.NotificationResource{{}},
+				Data:             []types.NotificationResource{createTestResource(1, "", "")},
 			},
 			want: envelope.Event{
 				Data: types.Data{
 					ResourcesContainer: types.RCInline,
 					ResourceLocation:   "location",
 					PublisherInfo:      "publisher",
-					Resources:          []types.NotificationResource{{}},
+					Resources:          []types.NotificationResource{createTestResource(1, "", "")},
 					AdditionalBatchProperties: types.AdditionalBatchProperties{
 						SDKVersion: "golang@0.1.0",
 						BatchSize:  1,
@@ -516,6 +518,374 @@ func TestNewEventMetaData(t *testing.T) {
 		if diff := pretty.Compare(test.want, env); diff != "" {
 			t.Errorf("TestNewEventMetaData(%s): -want/+got:\n%s", test.name, diff)
 		}
+	}
+}
+
+// TestTenantIDPropagation verifies that tenant IDs set by caller at parent level
+// are correctly preserved and propagated to child resources for inline notifications.
+func TestTenantIDPropagation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                 string
+		homeTenantID         string
+		resourceHomeTenantID string
+		resourceCount        int
+	}{
+		{
+			name:                 "Single resource with tenant IDs",
+			homeTenantID:         "11111111-1111-1111-1111-111111111111",
+			resourceHomeTenantID: "22222222-2222-2222-2222-222222222222",
+			resourceCount:        1,
+		},
+		{
+			name:                 "Multiple resources with same tenant IDs",
+			homeTenantID:         "33333333-3333-3333-3333-333333333333",
+			resourceHomeTenantID: "44444444-4444-4444-4444-444444444444",
+			resourceCount:        3,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var resources []types.NotificationResource
+			for i := 1; i <= test.resourceCount; i++ {
+				resources = append(resources, createTestResource(i, test.homeTenantID, test.resourceHomeTenantID))
+			}
+
+			notifications := Notifications{
+				ResourceLocation:     "eastus",
+				PublisherInfo:        "Microsoft.Test",
+				HomeTenantID:         test.homeTenantID,
+				ResourceHomeTenantID: test.resourceHomeTenantID,
+				Data:                 resources,
+			}
+
+			_, event, err := notifications.toEvent()
+			if err != nil {
+				t.Fatalf("toEvent() failed: %v", err)
+			}
+
+			// Verify inline path was used (not blob)
+			if event.Data.ResourcesContainer != types.RCInline {
+				t.Errorf("Expected inline path (RCInline), got: %v", event.Data.ResourcesContainer)
+			}
+
+			// Verify parent Data struct preserves caller's tenant ID values
+			if event.Data.HomeTenantID != test.homeTenantID {
+				t.Errorf("Parent HomeTenantID not preserved: got %q, want %q",
+					event.Data.HomeTenantID, test.homeTenantID)
+			}
+			if event.Data.ResourceHomeTenantID != test.resourceHomeTenantID {
+				t.Errorf("Parent ResourceHomeTenantID not preserved: got %q, want %q",
+					event.Data.ResourceHomeTenantID, test.resourceHomeTenantID)
+			}
+
+			// Verify all child resources retain their tenant IDs
+			for i, resource := range event.Data.Resources {
+				if resource.HomeTenantID != test.homeTenantID {
+					t.Errorf("Child resource[%d] HomeTenantID: got %q, want %q",
+						i, resource.HomeTenantID, test.homeTenantID)
+				}
+				if resource.ResourceHomeTenantID != test.resourceHomeTenantID {
+					t.Errorf("Child resource[%d] ResourceHomeTenantID: got %q, want %q",
+						i, resource.ResourceHomeTenantID, test.resourceHomeTenantID)
+				}
+			}
+		})
+	}
+}
+
+// TestTenantIDValidation tests that validation logic properly catches and reports
+// inconsistent tenant IDs between parent and child resources per ARN V3 spec.
+func TestTenantIDValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                   string
+		parentHomeTenantID     string
+		parentResourceTenantID string
+		resourceConfigs        []struct{ homeTenantID, resourceHomeTenantID string }
+		expectError            bool
+		errorContains          string
+	}{
+		{
+			name:                   "Both parent and child empty - should not error",
+			parentHomeTenantID:     "",
+			parentResourceTenantID: "",
+			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "", resourceHomeTenantID: ""}},
+			expectError:            false,
+		},
+		{
+			name:                   "Parent set, child empty - should not error",
+			parentHomeTenantID:     "parent-tenant-1",
+			parentResourceTenantID: "parent-resource-tenant-1",
+			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "", resourceHomeTenantID: ""}},
+			expectError:            false,
+		},
+		{
+			name:                   "Parent empty, child set - should error (strict validation)",
+			parentHomeTenantID:     "",
+			parentResourceTenantID: "",
+			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"}},
+			expectError:            true,
+			errorContains:          "Data.HomeTenantID is empty",
+		},
+		{
+			name:                   "Parent and child match - should not error",
+			parentHomeTenantID:     "tenant-1",
+			parentResourceTenantID: "resource-tenant-1",
+			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "tenant-1", resourceHomeTenantID: "resource-tenant-1"}},
+			expectError:            false,
+		},
+		{
+			name:                   "HomeTenantID mismatch - should error",
+			parentHomeTenantID:     "parent-tenant-1",
+			parentResourceTenantID: "resource-tenant-1",
+			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "child-tenant-1", resourceHomeTenantID: "resource-tenant-1"}},
+			expectError:            true,
+			errorContains:          "HomeTenantID",
+		},
+		{
+			name:                   "ResourceHomeTenantID mismatch - should error",
+			parentHomeTenantID:     "tenant-1",
+			parentResourceTenantID: "parent-resource-tenant-1",
+			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "tenant-1", resourceHomeTenantID: "child-resource-tenant-1"}},
+			expectError:            true,
+			errorContains:          "ResourceHomeTenantID",
+		},
+		{
+			name:                   "Multiple resources with different tenant IDs - should error",
+			parentHomeTenantID:     "",
+			parentResourceTenantID: "",
+			resourceConfigs: []struct{ homeTenantID, resourceHomeTenantID string }{
+				{homeTenantID: "tenant-A", resourceHomeTenantID: "resource-tenant-1"},
+				{homeTenantID: "tenant-B", resourceHomeTenantID: "resource-tenant-2"},
+			},
+			expectError:   true,
+			errorContains: "HomeTenantID",
+		},
+		{
+			name:                   "Parent set, all children empty - should not error",
+			parentHomeTenantID:     "parent-tenant-1",
+			parentResourceTenantID: "parent-resource-tenant-1",
+			resourceConfigs: []struct{ homeTenantID, resourceHomeTenantID string }{
+				{homeTenantID: "", resourceHomeTenantID: ""},
+				{homeTenantID: "", resourceHomeTenantID: ""},
+			},
+			expectError: false,
+		},
+		{
+			name:                   "Parent empty, all children set with same values - should error (strict validation)",
+			parentHomeTenantID:     "",
+			parentResourceTenantID: "",
+			resourceConfigs: []struct{ homeTenantID, resourceHomeTenantID string }{
+				{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"},
+				{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"},
+			},
+			expectError:   true,
+			errorContains: "Data.HomeTenantID is empty",
+		},
+		{
+			name:                   "Parent empty, children have mixed values - should error",
+			parentHomeTenantID:     "",
+			parentResourceTenantID: "",
+			resourceConfigs: []struct{ homeTenantID, resourceHomeTenantID string }{
+				{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"},
+				{homeTenantID: "", resourceHomeTenantID: ""},
+				{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"},
+			},
+			expectError:   true,
+			errorContains: "HomeTenantID",
+		},
+		{
+			name:                   "Some children have tenant IDs, others don't - should error",
+			parentHomeTenantID:     "",
+			parentResourceTenantID: "",
+			resourceConfigs: []struct{ homeTenantID, resourceHomeTenantID string }{
+				{homeTenantID: "tenant-1", resourceHomeTenantID: "resource-tenant-1"},
+				{homeTenantID: "", resourceHomeTenantID: "resource-tenant-1"},
+			},
+			expectError:   true,
+			errorContains: "HomeTenantID",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var resources []types.NotificationResource
+			for i, config := range test.resourceConfigs {
+				resource := createTestResource(i+1, config.homeTenantID, config.resourceHomeTenantID)
+				resources = append(resources, resource)
+			}
+
+			notifications := Notifications{
+				ResourceLocation:     "eastus",
+				PublisherInfo:        "Microsoft.Test",
+				HomeTenantID:         test.parentHomeTenantID,
+				ResourceHomeTenantID: test.parentResourceTenantID,
+				Data:                 resources,
+			}
+
+			_, event, err := notifications.toEvent()
+			if err != nil && !test.expectError {
+				t.Errorf("toEvent() failed unexpectedly: %v", err)
+				return
+			}
+
+			err = event.Validate()
+			if test.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+					return
+				}
+				if !strings.Contains(err.Error(), test.errorContains) {
+					t.Errorf("Expected error to contain %q, got: %v", test.errorContains, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestTenantIDPropagationBlobPath tests that caller-set tenant IDs are preserved correctly
+// for notifications that use the blob storage path
+func TestTenantIDPropagationBlobPath(t *testing.T) {
+	t.Parallel()
+
+	testHomeTenantID := "55555555-5555-5555-5555-555555555555"
+	testResourceHomeTenantID := "66666666-6666-6666-6666-666666666666"
+
+	// Create many resources to force blob path (exceeding inline size limit)
+	var resources []types.NotificationResource
+	for i := 1; i <= 50; i++ {
+		resource := createTestResource(i, testHomeTenantID, testResourceHomeTenantID)
+		// Add properties to increase payload size
+		resource.ArmResource = mustNewArm(types.ActWrite, resource.ArmResource.ResourceID(), "2024-01-01", map[string]interface{}{
+			"property1": strings.Repeat(fmt.Sprintf("large-property-value-%d-", i), 10),
+			"property2": make(map[string]string),
+		})
+		resources = append(resources, resource)
+	}
+
+	notifications := Notifications{
+		ResourceLocation:     "westus2",
+		PublisherInfo:        "Microsoft.Test",
+		HomeTenantID:         testHomeTenantID,
+		ResourceHomeTenantID: testResourceHomeTenantID,
+		Data:                 resources,
+	}
+
+	_, event, err := notifications.toEvent()
+	if err != nil {
+		t.Fatalf("toEvent() failed: %v", err)
+	}
+
+	// Verify this took the blob path
+	if event.Data.ResourcesContainer != types.RCBlob {
+		t.Errorf("Expected blob path (RCBlob), got: %v", event.Data.ResourcesContainer)
+	}
+
+	if event.Data.HomeTenantID != testHomeTenantID {
+		t.Errorf("Blob path HomeTenantID not preserved: got %q, want %q",
+			event.Data.HomeTenantID, testHomeTenantID)
+	}
+	if event.Data.ResourceHomeTenantID != testResourceHomeTenantID {
+		t.Errorf("Blob path ResourceHomeTenantID not preserved: got %q, want %q",
+			event.Data.ResourceHomeTenantID, testResourceHomeTenantID)
+	}
+
+	// Verify all child resources still have their tenant IDs in blob path
+	for i, resource := range event.Data.Resources {
+		if resource.HomeTenantID != testHomeTenantID {
+			t.Errorf("Child resource[%d] HomeTenantID: got %q, want %q",
+				i, resource.HomeTenantID, testHomeTenantID)
+		}
+		if resource.ResourceHomeTenantID != testResourceHomeTenantID {
+			t.Errorf("Child resource[%d] ResourceHomeTenantID: got %q, want %q",
+				i, resource.ResourceHomeTenantID, testResourceHomeTenantID)
+		}
+	}
+}
+
+// TestTenantIDJSONMarshalling tests that tenant IDs are correctly written out during
+// JSON marshalling and survive a marshal/unmarshal roundtrip cycle
+func TestTenantIDJSONMarshalling(t *testing.T) {
+	t.Parallel()
+
+	testHomeTenantID := "77777777-7777-7777-7777-777777777777"
+	testResourceHomeTenantID := "88888888-8888-8888-8888-888888888888"
+
+	resource := createTestResource(1, testHomeTenantID, testResourceHomeTenantID)
+
+	notifications := Notifications{
+		ResourceLocation:     "eastus",
+		PublisherInfo:        "Microsoft.Test",
+		HomeTenantID:         testHomeTenantID,
+		ResourceHomeTenantID: testResourceHomeTenantID,
+		Data:                 []types.NotificationResource{resource},
+	}
+
+	_, event, err := notifications.toEvent()
+	if err != nil {
+		t.Fatalf("toEvent() failed: %v", err)
+	}
+
+	jsonBytes, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Failed to marshal event to JSON: %v", err)
+	}
+
+	// Verify tenant IDs are present in the JSON output
+	jsonStr := string(jsonBytes)
+	if !strings.Contains(jsonStr, testHomeTenantID) {
+		t.Errorf("HomeTenantID %q not found in marshalled JSON", testHomeTenantID)
+	}
+	if !strings.Contains(jsonStr, testResourceHomeTenantID) {
+		t.Errorf("ResourceHomeTenantID %q not found in marshalled JSON", testResourceHomeTenantID)
+	}
+
+	// Verify the JSON contains the expected field names
+	if !strings.Contains(jsonStr, "homeTenantId") {
+		t.Errorf("Field name 'homeTenantId' not found in marshalled JSON")
+	}
+	if !strings.Contains(jsonStr, "resourceHomeTenantId") {
+		t.Errorf("Field name 'resourceHomeTenantId' not found in marshalled JSON")
+	}
+
+	var unmarshaled envelope.Event
+	_ = json.Unmarshal(jsonBytes, &unmarshaled)
+	if unmarshaled.Data.HomeTenantID != testHomeTenantID {
+		t.Errorf("Data.HomeTenantID not preserved in roundtrip: got %q, want %q",
+			unmarshaled.Data.HomeTenantID, testHomeTenantID)
+	}
+	if unmarshaled.Data.ResourceHomeTenantID != testResourceHomeTenantID {
+		t.Errorf("Data.ResourceHomeTenantID not preserved in roundtrip: got %q, want %q",
+			unmarshaled.Data.ResourceHomeTenantID, testResourceHomeTenantID)
+	}
+}
+
+func createTestResource(id int, homeTenantID, resourceHomeTenantID string) types.NotificationResource {
+	rescID, err := arm.ParseResourceID(fmt.Sprintf("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test/providers/Microsoft.Test/testResources/resource%d", id))
+	if err != nil {
+		panic(err)
+	}
+
+	return types.NotificationResource{
+		ResourceID:           rescID.String(),
+		APIVersion:           "2024-01-01",
+		StatusCode:           types.StatusCode, // Required by validation
+		HomeTenantID:         homeTenantID,
+		ResourceHomeTenantID: resourceHomeTenantID,
+		ResourceSystemProperties: types.ResourceSystemProperties{
+			ChangeAction: types.CACreate,
+		},
+		ArmResource: mustNewArm(types.ActWrite, rescID, "2024-01-01", map[string]interface{}{
+			"property1": fmt.Sprintf("value%d", id),
+		}),
 	}
 }
 
