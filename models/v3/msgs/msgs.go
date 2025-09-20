@@ -1,3 +1,4 @@
+// Package msgs provides the Notifications type which is used to send notifications to the ARN service.
 package msgs
 
 import (
@@ -7,7 +8,6 @@ import (
 	"log/slog"
 	"math"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/Azure/arn-sdk/internal/conn"
@@ -19,6 +19,7 @@ import (
 	"github.com/Azure/arn-sdk/models/v3/schema/envelope"
 	"github.com/Azure/arn-sdk/models/v3/schema/types"
 	"github.com/Azure/arn-sdk/models/version"
+	"github.com/gostdlib/base/concurrency/sync"
 
 	"github.com/go-json-experiment/json"
 	"github.com/google/uuid"
@@ -96,6 +97,9 @@ func (n Notifications) Recycle() {
 }
 
 func (n Notifications) Ctx() context.Context {
+	if n.ctx == nil {
+		return context.Background()
+	}
 	return n.ctx
 }
 
@@ -263,11 +267,14 @@ func (n Notifications) toEvent() ([]byte, envelope.Event, error) {
 	}, nil
 }
 
-var headerPool = sync.Pool{
-	New: func() any {
-		return make([]string, 2)
+var headerPool = sync.NewPool(
+	context.Background(),
+	"headerPool",
+	func() []string {
+		return make([]string, 2) // Two headers: "publisherinfo" and the actual publisher info.
 	},
-}
+	sync.WithBuffer(100), // Preallocate a pool of 100 header slices to avoid allocations during sendHTTP.
+)
 
 func (n Notifications) sendHTTP(hc *http.Client, event envelope.Event) error {
 	if n.testSendHTTP != nil {
@@ -279,12 +286,12 @@ func (n Notifications) sendHTTP(hc *http.Client, event envelope.Event) error {
 		return err
 	}
 
-	headers := headerPool.Get().([]string)
+	headers := headerPool.Get(n.Ctx())
 	headers[0] = "publisherinfo"
 	headers[1] = event.Data.PublisherInfo
-	defer headerPool.Put(headers)
+	defer headerPool.Put(n.Ctx(), headers)
 
-	return hc.Send(n.ctx, b, headers)
+	return hc.Send(n.Ctx(), b, headers)
 }
 
 func (n Notifications) sendBlob(store *storage.Client, dataJSON []byte) (*url.URL, error) {

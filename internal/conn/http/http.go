@@ -102,7 +102,9 @@ func (t *zlibTransport) Do(req *policy.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
-		writer.Close()
+		if err := writer.Close(); err != nil {
+			return nil, err
+		}
 		select {
 		case t.flatePool <- writer:
 		default:

@@ -27,6 +27,30 @@ func (f *fakeUploader) UploadBuffer(ctx context.Context, buffer []byte, o *block
 	return blockblob.UploadBufferResponse{}, f.err
 }
 
+type fakeTrackingUploader struct {
+	uploadCount int
+	data        [][]byte
+	err         error
+	errOnFirst  bool // If true, only return error on first call
+}
+
+func (f *fakeTrackingUploader) UploadBuffer(ctx context.Context, buffer []byte, o *blockblob.UploadBufferOptions) (blockblob.UploadBufferResponse, error) {
+	f.uploadCount++
+	// Copy the buffer to track what was uploaded
+	dataCopy := make([]byte, len(buffer))
+	copy(dataCopy, buffer)
+	f.data = append(f.data, dataCopy)
+
+	// If errOnFirst is true, only return error on first call
+	if f.errOnFirst && f.uploadCount == 1 {
+		return blockblob.UploadBufferResponse{}, f.err
+	}
+	if !f.errOnFirst {
+		return blockblob.UploadBufferResponse{}, f.err
+	}
+	return blockblob.UploadBufferResponse{}, nil
+}
+
 type fakeCreder struct {
 	err error
 }

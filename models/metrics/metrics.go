@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	subsystem    = "arn-sdk"
+	subsystem    = "arn_sdk"
 	successLabel = "success"
 	errorLabel   = "error"
 	inlineLabel  = "inline"
@@ -43,12 +43,12 @@ func metricName(name string) string {
 // Init initializes the arn sdk model metrics. This should only be called by the tattler constructor or tests.
 func Init(meter metric.Meter) error {
 	var err error
-	events.sent, err = meter.Int64Counter(metricName("event_sent_total"), metric.WithDescription("total number of events sent by the ARN client"))
+	events.sent, err = meter.Int64Counter(metricName("event_sent"), metric.WithDescription("total number of events sent by the ARN client"))
 	if err != nil {
 		return err
 	}
 
-	events.bytes, err = meter.Int64Counter(metricName("event_sent_bytes_total"), metric.WithDescription("total number of bytes in event data sent by the ARN client"))
+	events.bytes, err = meter.Int64Counter(metricName("event_sent_bytes"), metric.WithDescription("total number of bytes in event data sent by the ARN client"))
 	if err != nil {
 		return err
 	}
@@ -63,7 +63,7 @@ func Init(meter metric.Meter) error {
 		return err
 	}
 
-	promises.completed, err = meter.Int64Counter(metricName("promise_total"), metric.WithDescription("total number of promises made by the ARN client"))
+	promises.completed, err = meter.Int64Counter(metricName("promise"), metric.WithDescription("total number of promises made by the ARN client"))
 	if err != nil {
 		return err
 	}
