@@ -170,7 +170,6 @@ Example - sending a notification asynchronously using the v3 model using a AKS n
 package client
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"sync/atomic"
@@ -184,6 +183,7 @@ import (
 	modelmetrics "github.com/Azure/arn-sdk/models/metrics"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/gostdlib/base/context"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -457,7 +457,7 @@ func (a *ARN) Notify(ctx context.Context, n models.Notifications) error {
 	}
 
 	n = n.SetCtx(ctx)
-	n = n.SetPromise(conn.PromisePool.Get().(chan error))
+	n = n.SetPromise(conn.PromisePool.Get(ctx))
 	defer n.Recycle()
 	modelmetrics.ActivePromise(context.Background())
 
@@ -483,7 +483,7 @@ func (a *ARN) Notify(ctx context.Context, n models.Notifications) error {
 func (a *ARN) Async(ctx context.Context, n models.Notifications, promise bool) models.Notifications {
 	n = n.SetCtx(ctx)
 	if promise {
-		n = n.SetPromise(conn.PromisePool.Get().(chan error))
+		n = n.SetPromise(conn.PromisePool.Get(ctx))
 		modelmetrics.ActivePromise(context.Background())
 	}
 

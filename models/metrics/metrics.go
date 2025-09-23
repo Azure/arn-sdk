@@ -1,11 +1,11 @@
 package metrics
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/gostdlib/base/context"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 

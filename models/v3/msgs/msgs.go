@@ -2,7 +2,6 @@
 package msgs
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -20,6 +19,7 @@ import (
 	"github.com/Azure/arn-sdk/models/v3/schema/types"
 	"github.com/Azure/arn-sdk/models/version"
 	"github.com/gostdlib/base/concurrency/sync"
+	"github.com/gostdlib/base/context"
 
 	"github.com/go-json-experiment/json"
 	"github.com/google/uuid"
@@ -65,7 +65,7 @@ func (n Notifications) Promise(ctx context.Context) error {
 		return nil
 	}
 	defer func() {
-		conn.PromisePool.Put(n.promise)
+		conn.PromisePool.Put(ctx, n.promise)
 	}()
 
 	if ctx.Err() != nil {
@@ -92,7 +92,7 @@ func (n Notifications) Recycle() {
 		case <-n.promise:
 		default:
 		}
-		conn.PromisePool.Put(n.promise)
+		conn.PromisePool.Put(context.Background(), n.promise)
 	}
 }
 

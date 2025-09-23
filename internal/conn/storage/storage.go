@@ -29,7 +29,6 @@ Changes from the original:
 package storage
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -44,6 +43,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
+	"github.com/gostdlib/base/context"
 )
 
 // Client is a client for interacting with Azure Blob Storage for pushing and pulling data
@@ -180,7 +180,7 @@ func (c *Client) Upload(ctx context.Context, id string, b []byte) (*url.URL, err
 
 	u, err := url.Parse(bClient.URL())
 	if err != nil {
-		return nil, fmt.Errorf("URL returend by blob client is not a valid URL: %w", err)
+		return nil, fmt.Errorf("URL returned by blob client is not a valid URL: %w", err)
 	}
 
 	args := uploadArgs{
