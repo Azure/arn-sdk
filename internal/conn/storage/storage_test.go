@@ -173,20 +173,19 @@ func TestUploadPrivate(t *testing.T) {
 	}
 }
 
-
-func TestUploadDuplicateBug(t *testing.T) {
+func TestUploadContainerBug(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
 	testData := []byte("test data for upload")
 
 	tests := []struct {
-		name              string
-		uploaderErr       error
-		errOnFirst        bool
-		containerErr      error
-		wantUploadCount   int
-		wantErr           bool
+		name            string
+		uploaderErr     error
+		errOnFirst      bool
+		containerErr    error
+		wantUploadCount int
+		wantErr         bool
 	}{
 		{
 			name:            "Success: should upload only once when successful",
@@ -254,21 +253,21 @@ func TestUploadDuplicateBug(t *testing.T) {
 
 		switch {
 		case test.wantErr && err == nil:
-			t.Errorf("TestUploadDuplicateBug(%s): got err == nil, want err != nil", test.name)
+			t.Errorf("TestUploadContainerBug(%s): got err == nil, want err != nil", test.name)
 			continue
 		case !test.wantErr && err != nil:
-			t.Errorf("TestUploadDuplicateBug(%s): got err == %s, want err == nil", test.name, err)
+			t.Errorf("TestUploadContainerBug(%s): got err == %s, want err == nil", test.name, err)
 			continue
 		}
 
 		if uploader.uploadCount != test.wantUploadCount {
-			t.Errorf("TestUploadDuplicateBug(%s): upload called %d times, want %d times", test.name, uploader.uploadCount, test.wantUploadCount)
+			t.Errorf("TestUploadContainerBug(%s): upload called %d times, want %d times", test.name, uploader.uploadCount, test.wantUploadCount)
 		}
 
 		// Verify that the same data was uploaded each time
 		for i, data := range uploader.data {
 			if string(data) != string(testData) {
-				t.Errorf("TestUploadDuplicateBug(%s): upload %d had wrong data: got %q, want %q", test.name, i+1, string(data), string(testData))
+				t.Errorf("TestUploadContainerBug(%s): upload %d had wrong data: got %q, want %q", test.name, i+1, string(data), string(testData))
 			}
 		}
 	}
