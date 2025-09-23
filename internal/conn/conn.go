@@ -4,20 +4,24 @@ package conn
 import (
 	"fmt"
 	"log/slog"
-	"sync"
 	"sync/atomic"
 
 	"github.com/Azure/arn-sdk/internal/conn/http"
 	"github.com/Azure/arn-sdk/internal/conn/storage"
 	"github.com/Azure/arn-sdk/models"
+	"github.com/gostdlib/base/concurrency/sync"
+	"github.com/gostdlib/base/context"
 )
 
 // PromisePool is a pool of promises to use for notifications.
-var PromisePool = sync.Pool{
-	New: func() any {
+var PromisePool = sync.NewPool(
+	context.Background(),
+	"promisePool",
+	func() chan error {
 		return make(chan error, 1)
 	},
-}
+	sync.WithBuffer(10),
+)
 
 // Reset provides a REST connection to the ARN service.
 type Service struct {
@@ -32,6 +36,7 @@ type Service struct {
 	log *slog.Logger
 }
 
+// Option is an option for the New constructor.
 type Option func(*Service) error
 
 // WithLogger sets the logger on the client. By default it uses slog.Default().
@@ -98,7 +103,6 @@ func (s *Service) Send(notify models.Notifications) {
 		notify.SendPromise(notify.Ctx().Err(), s.clientErrs)
 	case s.in <- notify:
 	}
-	return
 }
 
 // sender sends notifications to the ARN service.

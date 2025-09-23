@@ -29,7 +29,6 @@ Changes from the original:
 package storage
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -44,6 +43,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
+	"github.com/gostdlib/base/context"
 )
 
 // Client is a client for interacting with Azure Blob Storage for pushing and pulling data
@@ -180,7 +180,7 @@ func (c *Client) Upload(ctx context.Context, id string, b []byte) (*url.URL, err
 
 	u, err := url.Parse(bClient.URL())
 	if err != nil {
-		return nil, fmt.Errorf("URL returend by blob client is not a valid URL: %w", err)
+		return nil, fmt.Errorf("URL returned by blob client is not a valid URL: %w", err)
 	}
 
 	args := uploadArgs{
@@ -228,16 +228,15 @@ type uploadArgs struct {
 	b      []byte
 }
 
+// upload uploads the the data (args.b) to a container. If the container doesn't exist, it creates it.
+// It then returns the URL with an SAS token and returns it. This is used to signal ARN of the blob location.
 func (c *Client) upload(ctx context.Context, args uploadArgs) (*url.URL, error) {
 	cred, err := c.creds.get(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: It would be better if we check for the existence of the container
-	// before trying to create it.  It wasn't immediately obvious how to do that.
-	_, err = args.upload.UploadBuffer(ctx, args.b, nil)
-	if err := handleUploadErr(ctx, err, args.create); err != nil {
+	if err := upload(ctx, args); err != nil {
 		return nil, err
 	}
 
@@ -279,20 +278,21 @@ func (c *Client) signParams(sigVals sas.BlobSignatureValues, cred *service.UserD
 	return &params, nil
 }
 
-// handleUploadErr handles the error returned by the upload operation.
-func handleUploadErr(ctx context.Context, err error, client createContainer) error {
-	if err == nil {
-		return nil
-	}
-
-	if bloberror.HasCode(err, bloberror.ContainerNotFound) {
-		_, err = client.Create(ctx, nil)
-		if err == nil || bloberror.HasCode(err, bloberror.ContainerAlreadyExists) {
-			return nil
+func upload(ctx context.Context, args uploadArgs) error {
+	_, err := args.upload.UploadBuffer(ctx, args.b, nil)
+	if err != nil {
+		if bloberror.HasCode(err, bloberror.ContainerNotFound) {
+			_, err = args.create.Create(ctx, nil)
+			if err != nil && !bloberror.HasCode(err, bloberror.ContainerAlreadyExists) {
+				return err
+			}
+			// Retry upload after container creation
+			_, err = args.upload.UploadBuffer(ctx, args.b, nil)
+			return err
 		}
 		return err
 	}
-	return err
+	return nil
 }
 
 // toPtr returns a pointer to any value. Do not replace this with the various

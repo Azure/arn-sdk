@@ -173,78 +173,104 @@ func TestUploadPrivate(t *testing.T) {
 	}
 }
 
-func TestHandleUploadErr(t *testing.T) {
+func TestUploadContainerBug(t *testing.T) {
 	t.Parallel()
 
-	cnfErr := &azcore.ResponseError{
-		ErrorCode: string(bloberror.ContainerNotFound),
-	}
-	contExistErr := &azcore.ResponseError{
-		ErrorCode: string(bloberror.ContainerAlreadyExists),
-	}
+	ctx := t.Context()
+	testData := []byte("test data for upload")
 
 	tests := []struct {
-		name           string
-		fakeContClient fakeContClient
-		err            error
-		wantErr        bool
-		wantTryCreate  bool
+		name            string
+		uploaderErr     error
+		errOnFirst      bool
+		containerErr    error
+		wantUploadCount int
+		wantErr         bool
 	}{
 		{
-			name:    "nil error",
-			err:     nil,
-			wantErr: false,
+			name:            "Success: should upload only once when successful",
+			uploaderErr:     nil,
+			containerErr:    nil,
+			wantUploadCount: 1,
+			wantErr:         false,
 		},
 		{
-			name:    "normal error, not a create container error",
-			err:     errors.New("normal error"),
-			wantErr: true,
-		},
-		{
-			name: "Container not found, Create() returns a normal error",
-			fakeContClient: fakeContClient{
-				err: errors.New("normal error"),
+			name: "Success: container not found, create succeeds, should retry upload",
+			uploaderErr: &azcore.ResponseError{
+				ErrorCode: string(bloberror.ContainerNotFound),
 			},
-			err:           cnfErr,
-			wantTryCreate: true,
-			wantErr:       true,
+			errOnFirst:      true,
+			containerErr:    nil,
+			wantUploadCount: 2,
+			wantErr:         false,
 		},
 		{
-			name: "Container not found, Create() returns no error",
-			fakeContClient: fakeContClient{
-				err: nil,
+			name: "Success: container not found, already exists, should retry upload",
+			uploaderErr: &azcore.ResponseError{
+				ErrorCode: string(bloberror.ContainerNotFound),
 			},
-			err:           cnfErr,
-			wantTryCreate: true,
+			errOnFirst: true,
+			containerErr: &azcore.ResponseError{
+				ErrorCode: string(bloberror.ContainerAlreadyExists),
+			},
+			wantUploadCount: 2,
+			wantErr:         false,
 		},
 		{
-			name: "Container not found, Create() returns ContainerAlreadyExists",
-			fakeContClient: fakeContClient{
-				err: contExistErr,
+			name: "Error: container not found, create fails with other error",
+			uploaderErr: &azcore.ResponseError{
+				ErrorCode: string(bloberror.ContainerNotFound),
 			},
-			err:           cnfErr,
-			wantTryCreate: true,
+			containerErr:    errors.New("create failed"),
+			wantUploadCount: 1,
+			wantErr:         true,
+		},
+		{
+			name:            "Error: upload fails with non-container error",
+			uploaderErr:     errors.New("network error"),
+			containerErr:    nil,
+			wantUploadCount: 1,
+			wantErr:         true,
 		},
 	}
 
 	for _, test := range tests {
-		fcc := &test.fakeContClient
-		err := handleUploadErr(context.Background(), test.err, fcc)
-
-		if test.wantTryCreate != fcc.called {
-			t.Errorf("TestHandleUploadErr(%s): had test.wantTryCreate == %v, Create.called == %v", test.name, test.wantTryCreate, fcc.called)
-			continue
+		uploader := &fakeTrackingUploader{
+			err:        test.uploaderErr,
+			errOnFirst: test.errOnFirst,
 		}
+		container := &fakeContClient{
+			err: test.containerErr,
+		}
+
+		args := uploadArgs{
+			b:      testData,
+			upload: uploader,
+			create: container,
+		}
+
+		err := upload(ctx, args)
+
 		switch {
 		case test.wantErr && err == nil:
-			t.Errorf("TestHandleUploadErr(%s): got err == nil, want err != nil", test.name)
+			t.Errorf("TestUploadContainerBug(%s): got err == nil, want err != nil", test.name)
 			continue
 		case !test.wantErr && err != nil:
-			t.Errorf("TestHandleUploadErr(%s): got err != nil, want err == nil", test.name)
+			t.Errorf("TestUploadContainerBug(%s): got err == %s, want err == nil", test.name, err)
 			continue
 		}
-	}
 
+		if uploader.uploadCount != test.wantUploadCount {
+			t.Errorf("TestUploadContainerBug(%s): upload called %d times, want %d times", test.name, uploader.uploadCount, test.wantUploadCount)
+		}
+
+		// Verify that the same data was uploaded each time
+		for i, data := range uploader.data {
+			if string(data) != string(testData) {
+				t.Errorf("TestUploadContainerBug(%s): upload %d had wrong data: got %q, want %q", test.name, i+1, string(data), string(testData))
+			}
+		}
+	}
 }
 
 func TestCName(t *testing.T) {

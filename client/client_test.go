@@ -1,7 +1,6 @@
 package client
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/Azure/arn-sdk/internal/conn/storage"
 	"github.com/Azure/arn-sdk/models"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/gostdlib/base/context"
 )
 
 func TestHTTPArgsValidate(t *testing.T) {
@@ -138,7 +138,7 @@ func newFakeNotify(ctx context.Context, count int, eventErr bool) fakeNotify {
 }
 
 func (f fakeNotify) Recycle() {
-	conn.PromisePool.Put(f.ch)
+	conn.PromisePool.Put(context.Background(), f.ch)
 }
 
 func (f fakeNotify) SetCtx(ctx context.Context) models.Notifications {

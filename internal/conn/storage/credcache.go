@@ -115,7 +115,7 @@ func (c *credCache) refresher() {
 	ctx := context.Background()
 
 	for {
-		next := time.Now().Add(nextRefresh)
+		next := c.now().Add(nextRefresh)
 		// This will block until the next refresh time.
 		// An error will only be returned if the cache is closed, so it can be ignored.
 		if err := c.refresh(ctx, boff, next); err != nil {

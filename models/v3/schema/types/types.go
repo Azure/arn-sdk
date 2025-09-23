@@ -79,7 +79,7 @@ type Data struct {
 // TODO: Need to write some tests for this.
 func (d Data) Validate() error {
 	if d.ResourcesContainer == 0 || d.ResourcesContainer >= ResourcesContainer(len(_ResourcesContainer_index)-1) {
-		return fmt.Errorf(".ChangedAction(%d) is invalid", d.ResourcesContainer)
+		return fmt.Errorf(".ResourcesContainer(%d) is invalid", d.ResourcesContainer)
 	}
 
 	switch d.ResourcesContainer {

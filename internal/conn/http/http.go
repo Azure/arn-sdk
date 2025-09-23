@@ -5,15 +5,15 @@ package http
 import (
 	"bytes"
 	"compress/zlib"
-	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"path"
-	"sync"
 	"testing"
 
 	"github.com/Azure/arn-sdk/internal/build"
+	"github.com/gostdlib/base/concurrency/sync"
+	"github.com/gostdlib/base/context"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
@@ -43,17 +43,23 @@ var changeScope = map[string]bool{
 	cloud.AzurePublic.ActiveDirectoryAuthorityHost:     true,
 }
 
-var readerPool = sync.Pool{
-	New: func() any {
+var readerPool = sync.NewPool(
+	context.Background(),
+	"readerPool",
+	func() *bytes.Reader {
 		return bytes.NewReader(nil)
 	},
-}
+	sync.WithBuffer(10),
+)
 
-var flatePool = sync.Pool{
-	New: func() any {
+var flatePool = sync.NewPool(
+	context.Background(),
+	"flatePool",
+	func() *bytes.Buffer {
 		return &bytes.Buffer{}
 	},
-}
+	sync.WithBuffer(10),
+)
 
 // zlibTransport is a custom RoundTripper that applies Deflate compression at the desired level.
 type zlibTransport struct {
@@ -69,6 +75,8 @@ func newFlateTransport() *zlibTransport {
 
 // Do performs the actual request and compresses the body using Deflate.
 func (t *zlibTransport) Do(req *policy.Request) (*http.Response, error) {
+	ctx := req.Raw().Context()
+
 	// Get the underlying http.Request
 	httpReq := req.Raw()
 
@@ -82,10 +90,9 @@ func (t *zlibTransport) Do(req *policy.Request) (*http.Response, error) {
 		}
 
 		// Compress the content using Deflate at the specified level.
-		compressedBuffer := flatePool.Get().(*bytes.Buffer)
+		compressedBuffer := flatePool.Get(ctx)
 		defer func() {
-			compressedBuffer.Reset()
-			flatePool.Put(compressedBuffer)
+			flatePool.Put(ctx, compressedBuffer)
 		}()
 
 		var writer *zlib.Writer
@@ -102,7 +109,9 @@ func (t *zlibTransport) Do(req *policy.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
-		writer.Close()
+		if err := writer.Close(); err != nil {
+			return nil, err
+		}
 		select {
 		case t.flatePool <- writer:
 		default:
@@ -213,9 +222,9 @@ func (c *Client) Send(ctx context.Context, event []byte, headers []string) error
 		return fmt.Errorf("headers must be key-value pairs")
 	}
 
-	read := readerPool.Get().(*bytes.Reader)
+	read := readerPool.Get(ctx)
 	read.Reset(event)
-	defer readerPool.Put(read)
+	defer readerPool.Put(ctx, read)
 
 	req, err := c.setup(ctx, read, headers)
 	if err != nil {
