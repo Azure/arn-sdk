@@ -93,7 +93,8 @@ func (d Data) Validate() error {
 
 		rscAPIVersion := ""
 		var rscType [2]string
-		var rscHomeTenantID, rscResourceHomeTenantID string // Track first resource's tenant IDs
+		var rscHomeTenantID, rscResourceHomeTenantID unique.Handle[string] // Track first resource's tenant IDs
+
 		for i, r := range d.Resources {
 			if err := r.Validate(); err != nil {
 				return fmt.Errorf(".Resources[%d]%w", i, err)
@@ -111,8 +112,8 @@ func (d Data) Validate() error {
 				rscAPIVersion = r.APIVersion
 				rscType[0] = r.ArmResource.arm.ResourceType.Namespace
 				rscType[1] = r.ArmResource.arm.ResourceType.Type
-				rscHomeTenantID = r.HomeTenantID
-				rscResourceHomeTenantID = r.ResourceHomeTenantID
+				rscHomeTenantID = unique.Make(r.HomeTenantID)
+				rscResourceHomeTenantID = unique.Make(r.ResourceHomeTenantID)
 			} else {
 				compare := [2]string{
 					r.ArmResource.arm.ResourceType.Namespace,
@@ -137,35 +138,24 @@ func (d Data) Validate() error {
 
 			// Validate tenant ID consistency, per ARN V3 spec: "If present at both levels, the values should be the same"
 			// if child has tenant IDs, parent must have them too (and they must match)
-			if r.HomeTenantID != "" {
-				if d.HomeTenantID == "" {
-					return fmt.Errorf(".Resources[%d].HomeTenantID is set to %q but Data.HomeTenantID is empty - both must be set for consistency",
-						i, r.HomeTenantID)
-				}
-				if d.HomeTenantID != r.HomeTenantID {
-					return fmt.Errorf(".Resources[%d].HomeTenantID %q must match Data.HomeTenantID %q",
-						i, r.HomeTenantID, d.HomeTenantID)
-				}
+			if r.HomeTenantID != "" && d.HomeTenantID != r.HomeTenantID {
+				return fmt.Errorf(".Resources[%d].HomeTenantID %q must match Data.HomeTenantID %q",
+					i, r.HomeTenantID, d.HomeTenantID)
 			}
-			if r.ResourceHomeTenantID != "" {
-				if d.ResourceHomeTenantID == "" {
-					return fmt.Errorf(".Resources[%d].ResourceHomeTenantID is set to %q but Data.ResourceHomeTenantID is empty - both must be set for consistency",
-						i, r.ResourceHomeTenantID)
-				}
-				if d.ResourceHomeTenantID != r.ResourceHomeTenantID {
-					return fmt.Errorf(".Resources[%d].ResourceHomeTenantID %q must match Data.ResourceHomeTenantID %q",
-						i, r.ResourceHomeTenantID, d.ResourceHomeTenantID)
-				}
+
+			if r.ResourceHomeTenantID != "" && d.ResourceHomeTenantID != r.ResourceHomeTenantID {
+				return fmt.Errorf(".Resources[%d].ResourceHomeTenantID %q must match Data.ResourceHomeTenantID %q",
+					i, r.ResourceHomeTenantID, d.ResourceHomeTenantID)
 			}
 
 			// Ensure all resources have same tenant IDs (following APIVersion pattern above)
-			if rscHomeTenantID != r.HomeTenantID {
+			if rscHomeTenantID != unique.Make(r.HomeTenantID) {
 				return fmt.Errorf(".Resources[%d].HomeTenantID %q must match other resources (%q)",
-					i, r.HomeTenantID, rscHomeTenantID)
+					i, r.HomeTenantID, rscHomeTenantID.Value())
 			}
-			if rscResourceHomeTenantID != r.ResourceHomeTenantID {
+			if rscResourceHomeTenantID != unique.Make(r.ResourceHomeTenantID) {
 				return fmt.Errorf(".Resources[%d].ResourceHomeTenantID %q must match other resources (%q)",
-					i, r.ResourceHomeTenantID, rscResourceHomeTenantID)
+					i, r.ResourceHomeTenantID, rscResourceHomeTenantID.Value())
 			}
 
 			if rscAPIVersion != r.APIVersion {
@@ -224,8 +214,6 @@ func (r *ResourcesBlobInfo) Validate() error {
 }
 
 // NotificationResource is the resource payload.
-// Note that HomeTenantID, ResourceHomeTenantID, APIVersion have been removed
-// as they are just duplicates of the Data fields that are required to be the same.
 // Field-aligned.
 type NotificationResource struct {
 	// ResourceEventTime is the time of the resource event.
@@ -255,7 +243,9 @@ type NotificationResource struct {
 	// This is optional except for provider scoped resources. It can also be specified
 	// at the Data level. If so, these should match.
 	HomeTenantID string `json:"homeTenantId,omitzero"`
-	// ResourceHomeTenantID is an optiona field with no definition.
+	// ResourceHomeTenantID is the tenant id in which the resources in this notification exist.
+	// This is optional.
+	// It can also be specified at the Data level. If so, these should match.
 	ResourceHomeTenantID string `json:"resourceHomeTenantId,omitzero"`
 	// ResourceSystemProperties provides details about the change action, who created and modified the resource, and when.
 	ResourceSystemProperties ResourceSystemProperties `json:"resourceSystemProperties,omitzero"`

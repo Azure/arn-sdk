@@ -629,7 +629,7 @@ func TestTenantIDValidation(t *testing.T) {
 			parentResourceTenantID: "",
 			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"}},
 			expectError:            true,
-			errorContains:          "Data.HomeTenantID is empty",
+			errorContains:          "Event.Data: .Resources[0].HomeTenantID \"child-tenant-1\" must match Data.HomeTenantI",
 		},
 		{
 			name:                   "Parent and child match - should not error",
@@ -684,7 +684,7 @@ func TestTenantIDValidation(t *testing.T) {
 				{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"},
 			},
 			expectError:   true,
-			errorContains: "Data.HomeTenantID is empty",
+			errorContains: "Event.Data: .Resources[0].HomeTenantID \"child-tenant-1\" must match Data.HomeTenantI",
 		},
 		{
 			name:                   "Parent empty, children have mixed values - should error",
@@ -811,9 +811,9 @@ func TestTenantIDPropagationBlobPath(t *testing.T) {
 	}
 }
 
-// TestTenantIDJSONMarshalling tests that tenant IDs are correctly written out during
-// JSON marshalling and survive a marshal/unmarshal roundtrip cycle
-func TestTenantIDJSONMarshalling(t *testing.T) {
+// TestTenantIDJSONMarshaling tests that tenant IDs are correctly written out during
+// JSON marshaling and survive a marshal/unmarshal roundtrip cycle
+func TestTenantIDJSONMarshaling(t *testing.T) {
 	t.Parallel()
 
 	testHomeTenantID := "77777777-7777-7777-7777-777777777777"
