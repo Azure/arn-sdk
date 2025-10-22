@@ -11,7 +11,8 @@ EventMeta is the metadata of the event. This is inlined during Marshaling.
 ArmResource is where you store the resource data from your service. You may need to have an
 agreed on schema with the ARN service. This object must serialize out a field called "id" that
 is the resource ID. During delete events, all object properties other than id will be missing.
-*/package types
+*/
+package types
 
 import (
 	"encoding/json"
