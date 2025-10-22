@@ -617,11 +617,12 @@ func TestTenantIDValidation(t *testing.T) {
 			expectError:            false,
 		},
 		{
-			name:                   "Parent set, child empty - should not error",
+			name:                   "Parent set, child empty - should error",
 			parentHomeTenantID:     "parent-tenant-1",
 			parentResourceTenantID: "parent-resource-tenant-1",
 			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "", resourceHomeTenantID: ""}},
-			expectError:            false,
+			expectError:            true,
+			errorContains:          "Event.Data: .Resources[0].HomeTenantID \"\" must match Data.HomeTenantID \"parent-tenant-1\"",
 		},
 		{
 			name:                   "Parent empty, child set - should error (strict validation)",
@@ -673,7 +674,8 @@ func TestTenantIDValidation(t *testing.T) {
 				{homeTenantID: "", resourceHomeTenantID: ""},
 				{homeTenantID: "", resourceHomeTenantID: ""},
 			},
-			expectError: false,
+			expectError:   true,
+			errorContains: "Event.Data: .Resources[0].HomeTenantID \"\" must match Data.HomeTenantID \"parent-tenant-1\"",
 		},
 		{
 			name:                   "Parent empty, all children set with same values - should error (strict validation)",

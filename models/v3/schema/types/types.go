@@ -11,8 +11,7 @@ EventMeta is the metadata of the event. This is inlined during Marshaling.
 ArmResource is where you store the resource data from your service. You may need to have an
 agreed on schema with the ARN service. This object must serialize out a field called "id" that
 is the resource ID. During delete events, all object properties other than id will be missing.
-*/
-package types
+*/package types
 
 import (
 	"encoding/json"
@@ -38,14 +37,8 @@ const (
 // Any field with omitzero tag is optional, however depending on the ResourcesContainer field, some fields might be required.
 // Field-aligned.
 type Data struct {
-	// Data is where the serialized resources are stored. Do not populate this as it will be erased.
-	// This is a JSON serialized version of the Resources field.
-	Data json.RawMessage `json:"resources"`
 	// AdditionalBatchProperties can contain the sdkversion, batchsize, subscription partition tag etc.
 	AdditionalBatchProperties AdditionalBatchProperties `json:"additionalBatchProperties"`
-	// ResourcesBlobInfo is the information about the storage blob used to store the payload of resources included in this notification.
-	// Populated only when a blob is used, in which case ResourcesContainer is set to Blob.
-	ResourcesBlobInfo ResourcesBlobInfo `json:"resourcesBlobInfo,omitzero"`
 	// HomeTenantID is the Tenant ID of the tenant from which the resources in this notification are managed.
 	HomeTenantID string `json:"homeTenantId,omitzero"`
 	// ResourceHomeTenantID is the Tenant ID of the tenant in which the resources in this notification are located.
@@ -64,14 +57,20 @@ type Data struct {
 	// APIVersion is the APIVersion in the format of "yyyy-MM-dd" follwed by an optional string like "-preview", "-privatepreview", etc.
 	// This is optional, however, if not set here, must be set on
 	APIVersion string `json:"apiVersion,omitzero"`
+	// DataBoundary is the boundary for the resources included in the notification.
+	DataBoundary string `json:"dataBoundary,omitzero"`
+	// Data is where the serialized resources are stored. Do not populate this as it will be erased.
+	// This is a JSON serialized version of the Resources field.
+	Data json.RawMessage `json:"resources"`
+	// ResourcesBlobInfo is the information about the storage blob used to store the payload of resources included in this notification.
+	// Populated only when a blob is used, in which case ResourcesContainer is set to Blob.
+	ResourcesBlobInfo ResourcesBlobInfo `json:"resourcesBlobInfo,omitzero"`
 	// Resources is required for inline payload, only null if payload is in blob. While it
 	// is not directly emitted as JSON, we serialize this and store it in the Data field.
 	Resources []NotificationResource `json:"-"`
 	// ResourcesContainer details if the resources are inline or in a blob.
 	// This is either RCInline or RCBlob.
 	ResourcesContainer ResourcesContainer `json:"resourcesContainer,omitzero"`
-	// DataBoundary is the boundary for the resources included in the notification.
-	DataBoundary string `json:"dataBoundary,omitzero"`
 }
 
 // Validate validates the data.
@@ -138,12 +137,12 @@ func (d Data) Validate() error {
 
 			// Validate tenant ID consistency, per ARN V3 spec: "If present at both levels, the values should be the same"
 			// if child has tenant IDs, parent must have them too (and they must match)
-			if r.HomeTenantID != "" && d.HomeTenantID != r.HomeTenantID {
+			if d.HomeTenantID != r.HomeTenantID {
 				return fmt.Errorf(".Resources[%d].HomeTenantID %q must match Data.HomeTenantID %q",
 					i, r.HomeTenantID, d.HomeTenantID)
 			}
 
-			if r.ResourceHomeTenantID != "" && d.ResourceHomeTenantID != r.ResourceHomeTenantID {
+			if d.ResourceHomeTenantID != r.ResourceHomeTenantID {
 				return fmt.Errorf(".Resources[%d].ResourceHomeTenantID %q must match Data.ResourceHomeTenantID %q",
 					i, r.ResourceHomeTenantID, d.ResourceHomeTenantID)
 			}
@@ -177,6 +176,10 @@ func (d Data) Validate() error {
 
 // AdditionalBatchProperties is the additional properties that can be set on a batch of notifications.
 type AdditionalBatchProperties struct {
+	// Others is a map of additional properties that are provided by the user. These should not
+	// include keys that are already defined in the struct. These entries are inlined into the
+	// object when serialized.
+	Others map[string]any `json:",inline"`
 	// BatchCorrelationID is a unique identifier for the batch of notifications. This can be used by
 	// ARN or ARG in traces. This is a GUID. Optional.
 	BatchCorrelationID string `json:"batchCorrelationId"`
@@ -186,10 +189,6 @@ type AdditionalBatchProperties struct {
 	// BatchSize is the number of resources in the batch. These may be inline or in a blob. This is
 	// automatically set by the SDK.
 	BatchSize uint16 `json:"batchSize"`
-	// Others is a map of additional properties that are provided by the user. These should not
-	// include keys that are already defined in the struct. These entries are inlined into the
-	// object when serialized.
-	Others map[string]any `json:",inline"`
 }
 
 // ResourcesBlobInfo is the information about the storage blob used to store the payload of resources
@@ -216,14 +215,16 @@ func (r *ResourcesBlobInfo) Validate() error {
 // NotificationResource is the resource payload.
 // Field-aligned.
 type NotificationResource struct {
+	// OperationalInfo is operational information for this resource.
+	OperationalInfo OperationalInfo `json:"operationalInfo,omitzero"`
 	// ResourceEventTime is the time of the resource event.
 	ResourceEventTime time.Time `json:"resourceEventTime,omitzero" format:"RFC3339"`
+	// AdditionalResourceProperties is a dictionary of additional resource metadata.
+	AdditionalResourceProperties map[string]string `json:"additionalResourceProperties,omitzero"`
 	// ArmResource is the ARM resource. This is where your specific resource data is stored.
 	// While it says Arm, it can be other resource types.
 	// For delete events all object properties other than id will be missing.
 	ArmResource ArmResource `json:"armResource,omitzero"`
-	// AdditionalResourceProperties is a dictionary of additional resource metadata.
-	AdditionalResourceProperties map[string]string `json:"additionalResourceProperties,omitzero"`
 	// ResourceID is the ARM resource ID.
 	// This is in the form of "="/subscriptions/{subId}/resourceGroups/{rgName}/providers/{providerNamespace}/{resourceType}/{resourceName}".
 	ResourceID string `json:"resourceId"`
@@ -249,8 +250,6 @@ type NotificationResource struct {
 	ResourceHomeTenantID string `json:"resourceHomeTenantId,omitzero"`
 	// ResourceSystemProperties provides details about the change action, who created and modified the resource, and when.
 	ResourceSystemProperties ResourceSystemProperties `json:"resourceSystemProperties,omitzero"`
-	// OperationalInfo is operational information for this resource.
-	OperationalInfo OperationalInfo `json:"operationalInfo,omitzero"`
 }
 
 // Validate validates the NotificationResource.
@@ -287,6 +286,8 @@ type ArmResource struct {
 	// This can be nil if the Activity that is being performed is a delete.
 	// If we were storing AKS node data for this event, this would be the node data.
 	Properties any `json:"properties,omitzero"`
+
+	arm *arm.ResourceID `json:"-"`
 	// Name is the name of the resource. This is the last segment of the resource ID.
 	Name string `json:"name,omitzero"`
 	// Type
@@ -299,8 +300,7 @@ type ArmResource struct {
 	// followed by an optional string like "-preview", "-privatepreview", etc.
 	APIVersion string `json:"apiVersion,omitzero"`
 
-	arm *arm.ResourceID `json:"-"`
-	act Activity        `json:"-"`
+	act Activity `json:"-"`
 }
 
 // NewArmResource creates a new ArmResource. act is the activity that is being performed on the resource.
