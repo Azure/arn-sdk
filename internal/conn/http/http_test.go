@@ -98,3 +98,32 @@ func TestSetup(t *testing.T) {
 		}
 	}
 }
+
+// TestEndpointSuffix pins that an endpoint already ending in /arnnotify is left alone. path.Dir returns
+// the parent, so the old guard never matched and appended a second suffix, 404ing every send.
+func TestEndpointSuffix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		endpoint string
+		want     string
+	}{
+		{
+			name:     "Success: the suffix is appended when absent",
+			endpoint: "https://host.example.com",
+			want:     "https://host.example.com/arnnotify",
+		},
+		{
+			name:     "Success: the suffix is not doubled when already present",
+			endpoint: "https://host.example.com/arnnotify",
+			want:     "https://host.example.com/arnnotify",
+		},
+	}
+
+	for _, test := range tests {
+		if got := notifyEndpoint(test.endpoint); got != test.want {
+			t.Errorf("TestEndpointSuffix(%s): got %s, want %s", test.name, got, test.want)
+		}
+	}
+}

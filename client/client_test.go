@@ -2,9 +2,9 @@ package client
 
 import (
 	"errors"
+	"log/slog"
 	"testing"
 
-	"github.com/Azure/arn-sdk/internal/conn"
 	"github.com/Azure/arn-sdk/internal/conn/http"
 	"github.com/Azure/arn-sdk/internal/conn/maxvals"
 	"github.com/Azure/arn-sdk/internal/conn/storage"
@@ -135,10 +135,6 @@ func newFakeNotify(ctx context.Context, count int, eventErr bool) fakeNotify {
 		count:    count,
 		eventErr: eventErr,
 	}
-}
-
-func (f fakeNotify) Recycle() {
-	conn.PromisePool.Put(context.Background(), f.ch)
 }
 
 func (f fakeNotify) SetCtx(ctx context.Context) models.Notifications {
@@ -357,4 +353,52 @@ func TestAsync(t *testing.T) {
 
 func copyStruct[T any](a T) T {
 	return a
+}
+
+// TestWithLogger pins that a nil logger is rejected rather than silently un-seeding the slog.Default()
+// that New() installs before options run.
+func TestWithLogger(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		log     *slog.Logger
+		wantErr bool
+	}{
+		{name: "Success: a logger is accepted", log: slog.Default()},
+		{name: "Error: a nil logger is rejected", log: nil, wantErr: true},
+	}
+
+	for _, test := range tests {
+		// Seeded the way New() seeds it, so a rejected option must leave this intact.
+		seeded := slog.Default()
+		a := &ARN{logger: seeded}
+
+		err := WithLogger(test.log)(a)
+
+		// Checked before the switch: on the error row the whole point is that the seeded logger
+		// survives, and a `continue` in the switch would skip it.
+		if a.logger == nil {
+			t.Errorf("TestWithLogger(%s): got a.logger == nil, want the seeded logger", test.name)
+		}
+
+		switch {
+		case err == nil && test.wantErr:
+			t.Errorf("TestWithLogger(%s): got err == nil, want err != nil", test.name)
+			continue
+		case err != nil && !test.wantErr:
+			t.Errorf("TestWithLogger(%s): got err == %s, want err == nil", test.name, err)
+			continue
+		case err != nil:
+			// Rejected: the seed must be untouched.
+			if a.logger != seeded {
+				t.Errorf("TestWithLogger(%s): a rejected option changed the logger", test.name)
+			}
+			continue
+		}
+
+		if a.logger != test.log {
+			t.Errorf("TestWithLogger(%s): got a.logger == %v, want the option's logger", test.name, a.logger)
+		}
+	}
 }

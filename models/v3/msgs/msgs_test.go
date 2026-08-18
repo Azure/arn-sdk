@@ -12,6 +12,7 @@ import (
 
 	"github.com/Azure/arn-sdk/internal/conn/http"
 	"github.com/Azure/arn-sdk/internal/conn/storage"
+	"github.com/Azure/arn-sdk/models"
 	"github.com/Azure/arn-sdk/models/v3/schema/envelope"
 	"github.com/Azure/arn-sdk/models/v3/schema/types"
 	"github.com/Azure/arn-sdk/models/version"
@@ -20,6 +21,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/kylelemons/godebug/pretty"
 )
+
+// testRscPrefix is the ARM resource-ID prefix shared by the fixtures in this file.
+const testRscPrefix = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test/providers/Microsoft.Test/testResources/"
 
 var expectedNow = time.Now().UTC()
 
@@ -36,34 +40,43 @@ func TestPromise(t *testing.T) {
 	cancel()
 
 	tests := []struct {
-		name        string
-		ctx         context.Context
+		name string
+		ctx  context.Context
+		// unresolved leaves the promise channel empty, so nothing is waiting to be received.
+		unresolved  bool
 		promise     chan error
 		prommiseErr bool
 		wantErr     bool
+		wantTimeout bool
 	}{
 		{
-			name: "Promise is nil",
+			name: "Success: a nil promise returns nil",
 			ctx:  context.Background(),
 		},
 		{
-			name:    "Error: context cancelled",
+			name:    "Success: a delivered result beats an expired context",
 			ctx:     cancelCtx,
 			promise: make(chan error, 1),
-			wantErr: true,
 		},
 		{
-			name:        "Error: promise error",
+			name:        "Error: the context expires with the notification still in flight",
+			ctx:         cancelCtx,
+			promise:     make(chan error, 1),
+			unresolved:  true,
+			wantErr:     true,
+			wantTimeout: true,
+		},
+		{
+			name:        "Error: the notification failed",
 			ctx:         context.Background(),
 			promise:     make(chan error, 1),
 			prommiseErr: true,
 			wantErr:     true,
 		},
 		{
-			name:    "Success",
+			name:    "Success: the notification succeeded",
 			ctx:     context.Background(),
 			promise: make(chan error, 1),
-			wantErr: false,
 		},
 	}
 
@@ -71,7 +84,7 @@ func TestPromise(t *testing.T) {
 		n := Notifications{
 			promise: test.promise,
 		}
-		if n.promise != nil {
+		if n.promise != nil && !test.unresolved {
 			if test.prommiseErr {
 				n.promise <- errors.New("promise error")
 			} else {
@@ -81,12 +94,18 @@ func TestPromise(t *testing.T) {
 
 		err := n.Promise(test.ctx)
 		switch {
-		case test.wantErr && err == nil:
+		case err == nil && test.wantErr:
 			t.Errorf("TestPromise(%s): got err == nil, want err != nil", test.name)
 			continue
-		case !test.wantErr && err != nil:
+		case err != nil && !test.wantErr:
 			t.Errorf("TestPromise(%s): got err == %s, want err == nil", test.name, err)
 			continue
+		}
+
+		// A timeout must be distinguishable from a send failure, which is the whole point of
+		// wrapping ErrPromiseTimeout rather than returning the raw context error.
+		if got := errors.Is(err, models.ErrPromiseTimeout); got != test.wantTimeout {
+			t.Errorf("TestPromise(%s): got errors.Is(err, ErrPromiseTimeout) == %v, want %v", test.name, got, test.wantTimeout)
 		}
 	}
 }
@@ -201,7 +220,7 @@ func TestSendEvent(t *testing.T) {
 		ResourceSystemProperties: types.ResourceSystemProperties{
 			ChangeAction: types.CADelete,
 		},
-		ArmResource: mustNewArm(types.ActDelete, rescID, "2020-05-01", nil),
+		ArmResource: mustNewArm(types.ActDelete, rescID, "2024-01-01", nil),
 	}
 
 	blobNotificationResrcs := []types.NotificationResource{}
@@ -285,6 +304,36 @@ func TestSendEvent(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "Error: Blob upload returns a nil URL",
+			n: Notifications{
+				Data: blobNotificationResrcs,
+				testSendHTTP: func(*http.Client, envelope.Event) error {
+					httpCalled = true
+					return nil
+				},
+				testSendBlob: func(*storage.Client, []byte) (*url.URL, error) {
+					blobCalled = true
+					return nil, nil
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "Error: Blob upload returns a URL with no host or path",
+			n: Notifications{
+				Data: blobNotificationResrcs,
+				testSendHTTP: func(*http.Client, envelope.Event) error {
+					httpCalled = true
+					return nil
+				},
+				testSendBlob: func(*storage.Client, []byte) (*url.URL, error) {
+					blobCalled = true
+					return &url.URL{}, nil
+				},
+			},
+			wantErr: true,
+		},
+		{
 			name: "Success: Blob",
 			n: Notifications{
 				Data: blobNotificationResrcs,
@@ -302,6 +351,11 @@ func TestSendEvent(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		// These are set by the test closures above, which capture them. They must be reset per
+		// case or a case that sets one leaks it into every case that follows.
+		httpCalled = false
+		blobCalled = false
+
 		err := test.n.SendEvent(nil, nil)
 		switch {
 		case test.wantErr && err == nil:
@@ -337,7 +391,9 @@ func TestDataToJSON(t *testing.T) {
 		Data: []types.NotificationResource{{}},
 	}
 
-	want := []byte(`[{"resourceId":""}]`)
+	// statusCode is emitted by types.Status.MarshalJSONTo, which defaults the zero value to
+	// types.StatusCode. Producers never set it themselves.
+	want := []byte(`[{"resourceId":"","statusCode":"OK"}]`)
 
 	got, err := n.dataToJSON()
 	if err != nil {
@@ -596,143 +652,189 @@ func TestTenantIDPropagation(t *testing.T) {
 	}
 }
 
-// TestTenantIDValidation tests that validation logic properly catches and reports
-// inconsistent tenant IDs between parent and child resources per ARN V3 spec.
+// tenantIDs holds the pair of tenant IDs carried by either a Notifications or a NotificationResource, so a
+// test case can state both levels in the same shape.
+type tenantIDs struct {
+	home         string
+	resourceHome string
+}
+
+// TestTenantIDValidation tests that validation catches inconsistent tenant IDs between the
+// Data level and the resource level. Tenant IDs must be identical at both levels, so each
+// error case below wrongs exactly one field relative to the valid baseline in the first case.
 func TestTenantIDValidation(t *testing.T) {
 	t.Parallel()
 
+	const (
+		home         = "11111111-1111-1111-1111-111111111111"
+		resourceHome = "22222222-2222-2222-2222-222222222222"
+		other        = "99999999-9999-9999-9999-999999999999"
+	)
+
 	tests := []struct {
-		name                   string
-		parentHomeTenantID     string
-		parentResourceTenantID string
-		resourceConfigs        []struct{ homeTenantID, resourceHomeTenantID string }
-		expectError            bool
+		name      string
+		parent    tenantIDs
+		resources []tenantIDs
+		wantErr   bool
 	}{
 		{
-			name:                   "Both parent and child empty - should not error",
-			parentHomeTenantID:     "",
-			parentResourceTenantID: "",
-			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "", resourceHomeTenantID: ""}},
-			expectError:            false,
+			name:      "Success: parent and resource tenant IDs match",
+			parent:    tenantIDs{home: home, resourceHome: resourceHome},
+			resources: []tenantIDs{{home: home, resourceHome: resourceHome}},
 		},
 		{
-			name:                   "Parent set, child empty - should error",
-			parentHomeTenantID:     "parent-tenant-1",
-			parentResourceTenantID: "parent-resource-tenant-1",
-			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "", resourceHomeTenantID: ""}},
-			expectError:            true,
+			name:      "Success: tenant IDs unset at both levels",
+			parent:    tenantIDs{},
+			resources: []tenantIDs{{}},
 		},
 		{
-			name:                   "Parent empty, child set - should error (strict validation)",
-			parentHomeTenantID:     "",
-			parentResourceTenantID: "",
-			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"}},
-			expectError:            true,
+			name:      "Success: two resources both matching the parent",
+			parent:    tenantIDs{home: home, resourceHome: resourceHome},
+			resources: []tenantIDs{{home: home, resourceHome: resourceHome}, {home: home, resourceHome: resourceHome}},
 		},
 		{
-			name:                   "Parent and child match - should not error",
-			parentHomeTenantID:     "tenant-1",
-			parentResourceTenantID: "resource-tenant-1",
-			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "tenant-1", resourceHomeTenantID: "resource-tenant-1"}},
-			expectError:            false,
+			name:      "Error: resource HomeTenantID differs from the parent",
+			parent:    tenantIDs{home: home, resourceHome: resourceHome},
+			resources: []tenantIDs{{home: other, resourceHome: resourceHome}},
+			wantErr:   true,
 		},
 		{
-			name:                   "HomeTenantID mismatch - should error",
-			parentHomeTenantID:     "parent-tenant-1",
-			parentResourceTenantID: "resource-tenant-1",
-			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "child-tenant-1", resourceHomeTenantID: "resource-tenant-1"}},
-			expectError:            true,
+			name:      "Error: resource HomeTenantID empty while the parent sets it",
+			parent:    tenantIDs{home: home, resourceHome: resourceHome},
+			resources: []tenantIDs{{home: "", resourceHome: resourceHome}},
+			wantErr:   true,
 		},
 		{
-			name:                   "ResourceHomeTenantID mismatch - should error",
-			parentHomeTenantID:     "tenant-1",
-			parentResourceTenantID: "parent-resource-tenant-1",
-			resourceConfigs:        []struct{ homeTenantID, resourceHomeTenantID string }{{homeTenantID: "tenant-1", resourceHomeTenantID: "child-resource-tenant-1"}},
-			expectError:            true,
+			name:      "Error: parent HomeTenantID empty while the resource sets it",
+			parent:    tenantIDs{home: "", resourceHome: resourceHome},
+			resources: []tenantIDs{{home: home, resourceHome: resourceHome}},
+			wantErr:   true,
 		},
 		{
-			name:                   "Multiple resources with different tenant IDs - should error",
-			parentHomeTenantID:     "",
-			parentResourceTenantID: "",
-			resourceConfigs: []struct{ homeTenantID, resourceHomeTenantID string }{
-				{homeTenantID: "tenant-A", resourceHomeTenantID: "resource-tenant-1"},
-				{homeTenantID: "tenant-B", resourceHomeTenantID: "resource-tenant-2"},
-			},
-			expectError: true,
+			name:      "Error: resource ResourceHomeTenantID differs from the parent",
+			parent:    tenantIDs{home: home, resourceHome: resourceHome},
+			resources: []tenantIDs{{home: home, resourceHome: other}},
+			wantErr:   true,
 		},
 		{
-			name:                   "Parent set, all children empty - should not error",
-			parentHomeTenantID:     "parent-tenant-1",
-			parentResourceTenantID: "parent-resource-tenant-1",
-			resourceConfigs: []struct{ homeTenantID, resourceHomeTenantID string }{
-				{homeTenantID: "", resourceHomeTenantID: ""},
-				{homeTenantID: "", resourceHomeTenantID: ""},
-			},
-			expectError: true,
+			name:      "Error: resource ResourceHomeTenantID empty while the parent sets it",
+			parent:    tenantIDs{home: home, resourceHome: resourceHome},
+			resources: []tenantIDs{{home: home, resourceHome: ""}},
+			wantErr:   true,
 		},
 		{
-			name:                   "Parent empty, all children set with same values - should error (strict validation)",
-			parentHomeTenantID:     "",
-			parentResourceTenantID: "",
-			resourceConfigs: []struct{ homeTenantID, resourceHomeTenantID string }{
-				{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"},
-				{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"},
-			},
-			expectError: true,
+			name:      "Error: parent ResourceHomeTenantID empty while the resource sets it",
+			parent:    tenantIDs{home: home, resourceHome: ""},
+			resources: []tenantIDs{{home: home, resourceHome: resourceHome}},
+			wantErr:   true,
 		},
 		{
-			name:                   "Parent empty, children have mixed values - should error",
-			parentHomeTenantID:     "",
-			parentResourceTenantID: "",
-			resourceConfigs: []struct{ homeTenantID, resourceHomeTenantID string }{
-				{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"},
-				{homeTenantID: "", resourceHomeTenantID: ""},
-				{homeTenantID: "child-tenant-1", resourceHomeTenantID: "child-resource-tenant-1"},
-			},
-			expectError: true,
+			name:      "Error: second resource HomeTenantID differs from the parent",
+			parent:    tenantIDs{home: home, resourceHome: resourceHome},
+			resources: []tenantIDs{{home: home, resourceHome: resourceHome}, {home: other, resourceHome: resourceHome}},
+			wantErr:   true,
 		},
 		{
-			name:                   "Some children have tenant IDs, others don't - should error",
-			parentHomeTenantID:     "",
-			parentResourceTenantID: "",
-			resourceConfigs: []struct{ homeTenantID, resourceHomeTenantID string }{
-				{homeTenantID: "tenant-1", resourceHomeTenantID: "resource-tenant-1"},
-				{homeTenantID: "", resourceHomeTenantID: "resource-tenant-1"},
-			},
-			expectError: true,
+			name:      "Error: second resource ResourceHomeTenantID differs from the parent",
+			parent:    tenantIDs{home: home, resourceHome: resourceHome},
+			resources: []tenantIDs{{home: home, resourceHome: resourceHome}, {home: home, resourceHome: other}},
+			wantErr:   true,
 		},
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var resources []types.NotificationResource
-			for i, config := range test.resourceConfigs {
-				resource := createTestResource(i+1, config.homeTenantID, config.resourceHomeTenantID)
-				resources = append(resources, resource)
-			}
+		var resources []types.NotificationResource
+		for i, ids := range test.resources {
+			resources = append(resources, createTestResource(i+1, ids.home, ids.resourceHome))
+		}
 
-			notifications := Notifications{
-				ResourceLocation:     "eastus",
-				PublisherInfo:        "Microsoft.Test",
-				HomeTenantID:         test.parentHomeTenantID,
-				ResourceHomeTenantID: test.parentResourceTenantID,
-				Data:                 resources,
-			}
+		notifications := Notifications{
+			ResourceLocation:     "eastus",
+			PublisherInfo:        "Microsoft.Test",
+			HomeTenantID:         test.parent.home,
+			ResourceHomeTenantID: test.parent.resourceHome,
+			Data:                 resources,
+		}
 
-			_, event, err := notifications.toEvent()
-			if err != nil && !test.expectError {
-				t.Errorf("toEvent() failed unexpectedly: %v", err)
-				return
-			}
+		_, event, err := notifications.toEvent()
+		if err != nil {
+			t.Errorf("TestTenantIDValidation(%s): toEvent(): got err == %s, want err == nil", test.name, err)
+			continue
+		}
 
-			err = event.Validate()
-			switch {
-			case test.expectError && err == nil:
-				t.Errorf("Expected error but got none")
-			case !test.expectError && err != nil:
-				t.Errorf("Expected no error but got: %v", err)
+		err = event.Validate()
+		switch {
+		case err == nil && test.wantErr:
+			t.Errorf("TestTenantIDValidation(%s): got err == nil, want err != nil", test.name)
+			continue
+		case err != nil && !test.wantErr:
+			t.Errorf("TestTenantIDValidation(%s): got err == %s, want err == nil", test.name, err)
+			continue
+		case err != nil:
+			continue
+		}
+	}
+}
+
+// TestSendEventDoesNotMutateCallerData verifies SendEvent never writes StatusCode into the caller's
+// slice. The default is applied at marshal time by types.Status.MarshalJSONTo instead, so the caller's
+// resources come back exactly as they were handed over.
+func TestSendEventDoesNotMutateCallerData(t *testing.T) {
+	t.Parallel()
+
+	rescID, err := arm.ParseResourceID(testRscPrefix + "resource1")
+	if err != nil {
+		t.Fatalf("TestSendEventDoesNotMutateCallerData: ParseResourceID(): got err == %s, want err == nil", err)
+	}
+
+	tests := []struct {
+		name     string
+		count    int
+		wantBlob bool
+	}{
+		{name: "Success: inline path leaves caller data untouched", count: 1},
+		{name: "Success: blob path leaves caller data untouched", count: 100, wantBlob: true},
+	}
+
+	for _, test := range tests {
+		blobCalled := false
+		callerData := make([]types.NotificationResource, 0, test.count)
+		for i := 0; i < test.count; i++ {
+			callerData = append(callerData, types.NotificationResource{
+				ResourceID:               rescID.String(),
+				APIVersion:               "2024-01-01",
+				ResourceSystemProperties: types.ResourceSystemProperties{ChangeAction: types.CACreate},
+				ArmResource:              mustNewArm(types.ActWrite, rescID, "2024-01-01", map[string]any{"k": "v"}),
+			})
+		}
+
+		n := Notifications{
+			ResourceLocation: "eastus",
+			PublisherInfo:    "Microsoft.Test",
+			Data:             callerData,
+			testSendHTTP:     func(*http.Client, envelope.Event) error { return nil },
+			testSendBlob: func(*storage.Client, []byte) (*url.URL, error) {
+				blobCalled = true
+				return url.Parse("https://blob/x")
+			},
+		}
+
+		if err := n.SendEvent(nil, nil); err != nil {
+			t.Errorf("TestSendEventDoesNotMutateCallerData(%s): got err == %s, want err == nil", test.name, err)
+			continue
+		}
+
+		// Without this the "blob path" case would silently degrade into a second inline test if the
+		// fixture or maxvals.InlineSize ever changed.
+		if blobCalled != test.wantBlob {
+			t.Errorf("TestSendEventDoesNotMutateCallerData(%s): got blobCalled == %v, want %v", test.name, blobCalled, test.wantBlob)
+		}
+
+		for i, r := range callerData {
+			if r.StatusCode != "" {
+				t.Errorf("TestSendEventDoesNotMutateCallerData(%s): callerData[%d]: got %q, want empty", test.name, i, r.StatusCode)
 			}
-		})
+		}
 	}
 }
 
@@ -749,7 +851,7 @@ func TestTenantIDPropagationBlobPath(t *testing.T) {
 	for i := 1; i <= 50; i++ {
 		resource := createTestResource(i, testHomeTenantID, testResourceHomeTenantID)
 		// Add properties to increase payload size
-		resource.ArmResource = mustNewArm(types.ActWrite, resource.ArmResource.ResourceID(), "2024-01-01", map[string]interface{}{
+		resource.ArmResource = mustNewArm(types.ActWrite, resource.ArmResource.ResourceID(), "2024-01-01", map[string]any{
 			"property1": strings.Repeat(fmt.Sprintf("large-property-value-%d-", i), 10),
 			"property2": make(map[string]string),
 		})
@@ -837,7 +939,7 @@ func TestTenantIDJSONMarshaling(t *testing.T) {
 }
 
 func createTestResource(id int, homeTenantID, resourceHomeTenantID string) types.NotificationResource {
-	rescID, err := arm.ParseResourceID(fmt.Sprintf("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test/providers/Microsoft.Test/testResources/resource%d", id))
+	rescID, err := arm.ParseResourceID(fmt.Sprintf("%sresource%d", testRscPrefix, id))
 	if err != nil {
 		panic(err)
 	}
@@ -851,16 +953,64 @@ func createTestResource(id int, homeTenantID, resourceHomeTenantID string) types
 		ResourceSystemProperties: types.ResourceSystemProperties{
 			ChangeAction: types.CACreate,
 		},
-		ArmResource: mustNewArm(types.ActWrite, rescID, "2024-01-01", map[string]interface{}{
+		ArmResource: mustNewArm(types.ActWrite, rescID, "2024-01-01", map[string]any{
 			"property1": fmt.Sprintf("value%d", id),
 		}),
 	}
 }
 
 func mustNewArm(act types.Activity, id *arm.ResourceID, apiVersion string, props any) types.ArmResource {
-	resc, err := types.NewArmResource(act, id, "2024-01-01", props)
+	resc, err := types.NewArmResource(act, id, apiVersion, props)
 	if err != nil {
 		panic(err)
 	}
 	return resc
+}
+
+// TestNewFieldPropagation pins that Notifications.APIVersion and Notifications.DataBoundary reach
+// types.Data on both the inline and blob paths. Both fields were added without any assertion that
+// toEvent() actually carries them.
+func TestNewFieldPropagation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		count         int
+		wantContainer types.ResourcesContainer
+	}{
+		{name: "Success: inline path carries both fields", count: 1, wantContainer: types.RCInline},
+		{name: "Success: blob path carries both fields", count: 100, wantContainer: types.RCBlob},
+	}
+
+	for _, test := range tests {
+		var resources []types.NotificationResource
+		for i := 0; i < test.count; i++ {
+			resources = append(resources, createTestResource(i+1, "", ""))
+		}
+
+		n := Notifications{
+			ResourceLocation: "eastus",
+			PublisherInfo:    "Microsoft.Test",
+			APIVersion:       "2024-01-01",
+			DataBoundary:     types.DBGlobal,
+			Data:             resources,
+		}
+
+		_, event, err := n.toEvent()
+		if err != nil {
+			t.Errorf("TestNewFieldPropagation(%s): toEvent(): got err == %s, want err == nil", test.name, err)
+			continue
+		}
+
+		if event.Data.ResourcesContainer != test.wantContainer {
+			got := event.Data.ResourcesContainer
+			t.Errorf("TestNewFieldPropagation(%s): got container == %v, want %v", test.name, got, test.wantContainer)
+		}
+		if event.Data.APIVersion != "2024-01-01" {
+			t.Errorf("TestNewFieldPropagation(%s): got APIVersion == %q, want %q", test.name, event.Data.APIVersion, "2024-01-01")
+		}
+		if event.Data.DataBoundary != types.DBGlobal {
+			t.Errorf("TestNewFieldPropagation(%s): got DataBoundary == %v, want %v", test.name, event.Data.DataBoundary, types.DBGlobal)
+		}
+	}
 }

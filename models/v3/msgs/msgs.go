@@ -31,6 +31,17 @@ var _ models.Notifications = Notifications{}
 // Notifications is a notification to send to the ARN service. This is a wrapper around the actual data
 // that is sent in the notification described in types.Data. The data will be converted to an Event and
 // sent over the wire.
+//
+// Ownership: passing a Notifications to Client.Async() transfers ownership of everything it references to the SDK,
+// which reads it on an internal goroutine after Async() returns. That covers Data and everything reachable from it
+// (ArmResource.Properties, AdditionalResourceProperties, and the *arm.ResourceID given to NewArmResource -- the SDK
+// calls String() on it, which memoizes into the value you still hold) as well as AdditionalBatchProperties.Others.
+//
+// Do not mutate or reuse any of it afterwards. With promise == true you may reclaim it once Promise() returns a
+// result -- that is, any return that does not wrap ErrPromiseTimeout. A timeout means the notification is still in
+// flight and ownership stays with the SDK; wait again with a fresh context rather than reclaiming. With
+// promise == false there is no completion signal at all, so the transfer is permanent. Notify() is synchronous
+// and unaffected.
 type Notifications struct {
 	// AdditionalBatchProperties can contain the sdkversion, batchsize, subscription partition tag etc.
 	AdditionalBatchProperties types.AdditionalBatchProperties
@@ -55,55 +66,83 @@ type Notifications struct {
 	// PublisherInfo is the Namespace of the publisher sending the data of this notification, for example Microsoft.Resources is be the publisherInfo for ARM.
 	PublisherInfo string
 
-	// HomeTenantID is the tenant from which the resources in this notification are managed.
-	// This should be set by caller for provider-scoped resources per ARN V3 spec.
-	HomeTenantID string `json:"homeTenantId,omitzero"`
-	// ResourceHomeTenantID is the tenant in which the resources in this notification exist.
-	// This should be set by caller for provider-scoped resources per ARN V3 spec.
-	ResourceHomeTenantID string `json:"resourceHomeTenantId,omitzero"`
+	// HomeTenantID is the tenant from which the resources in this notification are managed. This should be set by
+	// the caller for provider-scoped resources per ARN V3 spec. If set, every NotificationResource in Data must set
+	// the same value; if left empty, every NotificationResource must leave it empty. The levels must be identical.
+	HomeTenantID string
+	// ResourceHomeTenantID is the tenant in which the resources in this notification exist. This should be set by
+	// the caller for provider-scoped resources per ARN V3 spec. If set, every NotificationResource in Data must set
+	// the same value; if left empty, every NotificationResource must leave it empty. The levels must be identical.
+	ResourceHomeTenantID string
 
-	// Data is the data to send in the notification.
+	// APIVersion is the API version of the resource schema, in the format "yyyy-MM-dd" followed
+	// by an optional string like "-preview" or "-privatepreview". Optional. If left empty, every
+	// NotificationResource in Data must set its own APIVersion. If set here, each
+	// NotificationResource must either match it or leave its own APIVersion empty.
+	APIVersion string
+	// DataBoundary is the data boundary for the resources in this notification. Optional;
+	// leave as types.DBUnknown to omit it from the wire format.
+	DataBoundary types.DataBoundary
+
+	// Data is the data to send in the notification. See the ownership note on Notifications.
 	Data []types.NotificationResource
 }
 
-// Promise waits for the promise to be fulfilled. This will return an ErrPromiseTimeout if the context
-// passed times out to distiguish it from a context timeout on sending the notification.
+// Promise waits for the promise to be fulfilled. It returns an error wrapping ErrPromiseTimeout if the
+// context passed times out, to distinguish that from a context timeout on sending the notification.
+//
+// Call Promise at most once per resolved result. It may be called repeatedly while it keeps returning
+// ErrPromiseTimeout -- the notification is still in flight and the promise is still valid. Once it
+// returns anything else the promise is spent: calling again, or calling concurrently on a copy of the
+// value, consumes a result belonging to a different notification.
+//
+// The promise channel is returned to the pool here, on the branch that actually receives the result,
+// because that is the only point at which the sender is known to be finished with it. It is
+// deliberately not recycled on the timeout branches: the notification is still in flight there, and
+// pooling the channel would let the sender's late write land in whichever notification drew it next.
+// Those channels are left to the garbage collector instead, which costs a pool entry and nothing else.
 func (n Notifications) Promise(ctx context.Context) error {
 	if n.promise == nil {
 		return nil
 	}
-	defer func() {
-		conn.PromisePool.Put(ctx, n.promise)
-	}()
 
 	if ctx.Err() != nil {
-		metrics.Promise(context.Background(), ctx.Err())
-		return ctx.Err()
+		return n.timedOut(ctx)
 	}
 
 	select {
 	case <-ctx.Done():
-		metrics.Promise(context.Background(), models.ErrPromiseTimeout)
-		return models.ErrPromiseTimeout
+		return n.timedOut(ctx)
 	case e := <-n.promise:
-		metrics.Promise(context.Background(), e)
-		return e
+		return n.resolved(ctx, e)
 	}
 }
 
-// Recycle can be used to recycle the promise of a notification once it has been used.
-// This is for internal use and should not be called.
-// It is a terrible idea to use the promise after it has been recycled.
-func (n Notifications) Recycle() {
-	if n.promise != nil {
-		select {
-		case <-n.promise:
-		default:
-		}
-		conn.PromisePool.Put(context.Background(), n.promise)
-	}
+// resolved records the result and returns the promise channel to the pool. This is the only point at
+// which the sender is known to be finished with the channel.
+func (n Notifications) resolved(ctx context.Context, e error) error {
+	conn.PromisePool.Put(ctx, n.promise)
+	metrics.Promise(context.Background(), e)
+	return e
 }
 
+// timedOut is the give-up path. It drains first because select chooses randomly when both the context
+// and the promise are ready, so a deadline expiring at the instant the result lands would otherwise
+// report a timeout for a notification that actually shipped. The channel is deliberately not pooled
+// here: the notification is still in flight, and the promise is still valid to wait on again.
+func (n Notifications) timedOut(ctx context.Context) error {
+	select {
+	case e := <-n.promise:
+		return n.resolved(ctx, e)
+	default:
+	}
+	// Only the completed counter is recorded. The gauge is decremented by resolved(), because the
+	// promise is not finished -- the caller may wait on it again with a fresh context.
+	metrics.PromiseTimeout(context.Background())
+	return fmt.Errorf("%w: %w", models.ErrPromiseTimeout, ctx.Err())
+}
+
+// Ctx returns the Context for this Notifications instance.
 func (n Notifications) Ctx() context.Context {
 	if n.ctx == nil {
 		return context.Background()
@@ -199,16 +238,13 @@ func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (err er
 		return err
 	}
 
-	// As a producer, we have to set the status code for all Resources to OK.
-	for i, e := range event.Data.Resources {
-		e.StatusCode = types.StatusCode
-		event.Data.Resources[i] = e
-	}
 	if err = event.Validate(); err != nil {
 		return err
 	}
 
-	dataSize = int64(len(event.Data.Data))
+	// Measured from dataJSON, not event.Data.Data: toEvent() only populates Data.Data on the inline
+	// branch, so reading it here reported 0 bytes for every blob send.
+	dataSize = int64(len(dataJSON))
 
 	// If the data is marked inline, we can send over HTTP directly.
 	if event.Data.ResourcesContainer == types.RCInline {
@@ -220,10 +256,19 @@ func (n Notifications) SendEvent(hc *http.Client, store *storage.Client) (err er
 	if err != nil {
 		return err
 	}
+	// A fake Uploader supplied through client.WithFakeClients may return (nil, nil); without this
+	// the deref below panics on the sender goroutine, which has no recover.
+	if u == nil {
+		return errors.New("blob upload returned no URL")
+	}
 
 	// Tell the service (via HTTP) where to find the blob.
 	event.Data.ResourcesBlobInfo.BlobURI = u.String()
 	event.Data.ResourcesBlobInfo.BlobSize = int64(len(dataJSON))
+	// Data.Validate() cannot check this, as it runs before the upload gives us the URI and size.
+	if err = event.Data.ResourcesBlobInfo.Validate(); err != nil {
+		return err
+	}
 	return n.sendHTTP(hc, event)
 }
 
@@ -257,9 +302,11 @@ func (n Notifications) toEvent() ([]byte, envelope.Event, error) {
 				ResourcesContainer:        types.RCInline,
 				ResourceLocation:          n.ResourceLocation,
 				PublisherInfo:             n.PublisherInfo,
-				Resources:                 n.Data, // This doesn't serialize into JSON, only the "Data" field does, which actually replaces this field.
+				Resources:                 n.Data, // See the ownership note on Notifications.Data.
 				HomeTenantID:              n.HomeTenantID,
 				ResourceHomeTenantID:      n.ResourceHomeTenantID,
+				APIVersion:                n.APIVersion,
+				DataBoundary:              n.DataBoundary,
 			},
 		}, nil
 	}
@@ -272,9 +319,11 @@ func (n Notifications) toEvent() ([]byte, envelope.Event, error) {
 			ResourcesContainer:        types.RCBlob,
 			ResourceLocation:          n.ResourceLocation,
 			PublisherInfo:             n.PublisherInfo,
-			Resources:                 n.Data, // This doesn't serialize into JSON, only the "Data" field does, which actually replaces this field.
+			Resources:                 n.Data, // See the ownership note on Notifications.Data.
 			HomeTenantID:              n.HomeTenantID,
 			ResourceHomeTenantID:      n.ResourceHomeTenantID,
+			APIVersion:                n.APIVersion,
+			DataBoundary:              n.DataBoundary,
 		},
 	}, nil
 }
@@ -316,7 +365,7 @@ func (n Notifications) sendBlob(store *storage.Client, dataJSON []byte) (*url.UR
 		return nil, fmt.Errorf("event exceeds max inline size and no storage client provided to store the data in a blob")
 	}
 
-	return store.Upload(n.ctx, uuid.New().String(), dataJSON)
+	return store.Upload(n.Ctx(), uuid.New().String(), dataJSON)
 }
 
 // inline determines if the notification should be inlined. It returns the JSON representation of the data

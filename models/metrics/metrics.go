@@ -135,6 +135,29 @@ func Promise(ctx context.Context, err error) {
 	}
 }
 
+// PromiseTimeout records a promise wait that gave up on its context. It increments the completed
+// counter but deliberately leaves promises.current alone: the notification is still in flight and the
+// caller may wait again, so the gauge is only decremented by Promise() when the promise resolves.
+func PromiseTimeout(ctx context.Context) {
+	opt := metric.WithAttributes(
+		attribute.Key(errorLabel).Bool(true),
+		attribute.Key(timeoutLabel).Bool(true),
+	)
+	if promises.completed != nil {
+		promises.completed.Add(ctx, 1, opt)
+	}
+}
+
+// PromiseAbandoned decrements promises.current for a promise nobody can wait on again. It records no
+// completion, because PromiseTimeout already counted one. Client.Notify() needs this: unlike Async() it
+// does not hand the notification back, so a timed-out promise there is unrecoverable rather than
+// merely unfinished.
+func PromiseAbandoned(ctx context.Context) {
+	if promises.current != nil {
+		promises.current.Add(ctx, -1)
+	}
+}
+
 // ActivePromise increases the promises.current metric.
 // This should be called when a promise is created.
 func ActivePromise(ctx context.Context) {

@@ -87,7 +87,8 @@ func TestDeflate(t *testing.T) {
 
 	handler := &httpHandler{results: make([]flateData, len(data)-1)}
 	// Set up the HTTP route
-	http.HandleFunc("/deflate", handler.handleDeflateRequest)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/deflate", handler.handleDeflateRequest)
 
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -95,7 +96,7 @@ func TestDeflate(t *testing.T) {
 	}
 
 	go func() {
-		if err := http.Serve(listener, nil); err != nil {
+		if err := http.Serve(listener, mux); err != nil {
 			fmt.Printf("Failed to start server: %v\n", err)
 		}
 	}()

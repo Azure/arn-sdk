@@ -4,9 +4,9 @@ package conn
 import (
 	"fmt"
 	"log/slog"
-	"sync/atomic"
 
 	"github.com/Azure/arn-sdk/internal/conn/http"
+	"github.com/Azure/arn-sdk/internal/conn/maxvals"
 	"github.com/Azure/arn-sdk/internal/conn/storage"
 	"github.com/Azure/arn-sdk/models"
 	"github.com/gostdlib/base/concurrency/sync"
@@ -30,8 +30,6 @@ type Service struct {
 	store      *storage.Client
 	clientErrs chan error
 	in         chan models.Notifications
-
-	id atomic.Uint64
 
 	log *slog.Logger
 }
@@ -85,9 +83,9 @@ func (r *Service) Close() error {
 }
 
 // Send sends a notification to the ARN service. This will block if the internal channel is full.
-// notify.DataCount() must indicate no more than 1000 items. Not thread safe.
+// notify.DataCount() must indicate no more than maxvals.NotificationItems items. Not thread safe.
 func (s *Service) Send(notify models.Notifications) {
-	if notify.DataCount() > 1000 {
+	if notify.DataCount() > maxvals.NotificationItems {
 		notify.SendPromise(models.ErrBatchSize, s.clientErrs)
 		return
 	}

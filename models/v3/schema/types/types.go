@@ -19,9 +19,10 @@ import (
 	"errors"
 	"fmt"
 	"time"
-	"unique"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
+	jsonv2 "github.com/go-json-experiment/json"
+	"github.com/go-json-experiment/json/jsontext"
 )
 
 const (
@@ -55,13 +56,16 @@ type Data struct {
 	Sign string `json:"-"`
 	// RoutingType is set by ARN, do not populate as a publisher.
 	RoutingType string `json:"-"`
-	// APIVersion is the APIVersion in the format of "yyyy-MM-dd" follwed by an optional string like "-preview", "-privatepreview", etc.
-	// This is optional, however, if not set here, must be set on
+	// APIVersion is the APIVersion in the format of "yyyy-MM-dd" followed by an optional suffix
+	// such as "-preview" or "-privatepreview".
+	// This is optional, however if it is not set here it must be set on every NotificationResource in Resources.
+	// If it is set here, each NotificationResource must either match it or leave its own APIVersion empty.
 	APIVersion string `json:"apiVersion,omitzero"`
 	// DataBoundary is the boundary for the resources included in the notification.
-	DataBoundary string `json:"dataBoundary,omitzero"`
-	// Data is where the serialized resources are stored. Do not populate this as it will be erased.
-	// This is a JSON serialized version of the Resources field.
+	// Optional. DBUnknown omits the field from the wire format.
+	DataBoundary DataBoundary `json:"dataBoundary,omitzero"`
+	// Data is where the serialized resources are stored, as a JSON serialization of the Resources field.
+	// Do not populate this: the SDK sets it, and Validate() rejects a caller-set value on the blob path.
 	Data json.RawMessage `json:"resources"`
 	// ResourcesBlobInfo is the information about the storage blob used to store the payload of resources included in this notification.
 	// Populated only when a blob is used, in which case ResourcesContainer is set to Blob.
@@ -82,93 +86,114 @@ func (d Data) Validate() error {
 		return fmt.Errorf(".ResourcesContainer(%d) is invalid", d.ResourcesContainer)
 	}
 
+	// DataBoundary is optional, so DBUnknown is allowed. Anything past the last defined
+	// constant is a bug in the caller.
+	if d.DataBoundary >= DataBoundary(len(_DataBoundary_index)-1) {
+		return fmt.Errorf(".DataBoundary(%d) is invalid", d.DataBoundary)
+	}
+
+	// The arms stay separate because the container decides which payload is legal, and that invariant
+	// has nowhere else to live. The per-resource loop below is deliberately outside the switch: how the
+	// resources travel says nothing about whether they are well formed, and skipping it for blob let
+	// invalid resources ship.
 	switch d.ResourcesContainer {
-	case RCBlob:
-		// We don't validate the ResourceBlobInfo here, because this gets called before
-		// we upload the blob and get back the URL and size.
 	case RCInline:
 		if len(d.Resources) == 0 {
 			return errors.New(".Resources is required when ResourcesContainer is Inline")
 		}
+		if d.ResourcesBlobInfo != (ResourcesBlobInfo{}) {
+			return errors.New(".ResourcesBlobInfo must not be set when ResourcesContainer is Inline")
+		}
+	case RCBlob:
+		if len(d.Resources) == 0 {
+			return errors.New(".Resources is required when ResourcesContainer is Blob")
+		}
+		// Data is the field that actually serializes (as "resources"); Resources is json:"-" and is the
+		// in-memory source for both containers. Guarding Data is what keeps the wire payload and the
+		// container tag consistent.
+		if len(d.Data) != 0 {
+			return errors.New(".Data must not be set when ResourcesContainer is Blob")
+		}
+		// ResourcesBlobInfo is not checked here: msgs uploads the blob after this runs and validates
+		// the URI and size it gets back at that point.
+	default:
+		// The guard above only bounds the value against the generated index, which widens on its own
+		// whenever a constant is added. This bounds the dispatch, so a new container cannot slip
+		// through unvalidated.
+		return fmt.Errorf("bug: .ResourcesContainer(%d) is defined but Data.Validate() has no case", d.ResourcesContainer)
+	}
 
-		rscAPIVersion := ""
-		var rscType [2]string
-		var rscHomeTenantID, rscResourceHomeTenantID unique.Handle[string] // Track first resource's tenant IDs
+	rscAPIVersion := ""
+	var rscType [2]string
 
-		for i, r := range d.Resources {
-			if err := r.Validate(); err != nil {
-				return fmt.Errorf(".Resources[%d]%w", i, err)
-			}
+	for i, r := range d.Resources {
+		if err := r.Validate(); err != nil {
+			return fmt.Errorf(".Resources[%d]%w", i, err)
+		}
 
-			if r.ArmResource.arm == nil {
-				return fmt.Errorf("ArmResource was not created with NewARMResource()")
-			}
+		if r.ArmResource.arm == nil {
+			return fmt.Errorf(".Resources[%d].ArmResource is empty or was not created with NewArmResource()", i)
+		}
 
-			// All ARMResource.Properties must be of the same type. This either gets the type on the
-			// first iteration or validates that the type is the same on subsequent iterations.
-			// Also makes sure that APIVersion is set on all resources if it is not set on Data and that
-			// it matches if it is set on Data.
-			if i == 0 {
-				rscAPIVersion = r.APIVersion
-				rscType[0] = r.ArmResource.arm.ResourceType.Namespace
-				rscType[1] = r.ArmResource.arm.ResourceType.Type
-				rscHomeTenantID = unique.Make(r.HomeTenantID)
-				rscResourceHomeTenantID = unique.Make(r.ResourceHomeTenantID)
-			} else {
-				compare := [2]string{
-					r.ArmResource.arm.ResourceType.Namespace,
-					r.ArmResource.arm.ResourceType.Type,
-				}
-				if unique.Make(rscType) != unique.Make(compare) {
-					return errors.New("all NotificationResource.ArmResource.Properties must be of the same type")
-				}
+		// All ARMResource.Properties must be of the same type. This either gets the type on the
+		// first iteration or validates that the type is the same on subsequent iterations.
+		if i == 0 {
+			rscType[0] = r.ArmResource.arm.ResourceType.Namespace
+			rscType[1] = r.ArmResource.arm.ResourceType.Type
+		} else {
+			compare := [2]string{r.ArmResource.arm.ResourceType.Namespace, r.ArmResource.arm.ResourceType.Type}
+			if rscType != compare {
+				return errors.New("all NotificationResource.ArmResource.Properties must be of the same type")
 			}
+		}
 
-			// If APIVersion is not set, it must be set on all resources.
-			if d.APIVersion == "" {
-				if r.APIVersion == "" {
-					return errors.New("NotificationResource.APIVersion is required when not set on Data")
-				}
-			} else {
-				// If it is set on Data, it must match on all resources or they must be empty.
-				if d.APIVersion != r.APIVersion && r.APIVersion != "" {
-					return errors.New("NotificationResource.APIVersion must match Data.APIVersion if set")
-				}
+		// If APIVersion is not set on Data, it must be set on all resources.
+		if d.APIVersion == "" {
+			if r.APIVersion == "" {
+				return errors.New("NotificationResource.APIVersion is required when not set on Data")
 			}
+		} else {
+			// If it is set on Data, it must match on all resources or they must be empty.
+			if d.APIVersion != r.APIVersion && r.APIVersion != "" {
+				return errors.New("NotificationResource.APIVersion must match Data.APIVersion if set")
+			}
+		}
 
-			// Validate tenant ID consistency, per ARN V3 spec: "If present at both levels, the values should be the same"
-			// if child has tenant IDs, parent must have them too (and they must match)
-			if d.HomeTenantID != r.HomeTenantID {
-				return fmt.Errorf(".Resources[%d].HomeTenantID %q must match Data.HomeTenantID %q",
-					i, r.HomeTenantID, d.HomeTenantID)
-			}
+		// Tenant IDs must be identical at both levels. This is stricter than the ARN V3 spec's
+		// "if present at both levels, the values should be the same": empty is compared as a value,
+		// so a resource may not leave a tenant ID unset when Data sets it, or vice versa.
+		if d.HomeTenantID != r.HomeTenantID {
+			return fmt.Errorf(".Resources[%d].HomeTenantID %q must match Data.HomeTenantID %q", i, r.HomeTenantID, d.HomeTenantID)
+		}
 
-			if d.ResourceHomeTenantID != r.ResourceHomeTenantID {
-				return fmt.Errorf(".Resources[%d].ResourceHomeTenantID %q must match Data.ResourceHomeTenantID %q",
-					i, r.ResourceHomeTenantID, d.ResourceHomeTenantID)
-			}
+		if d.ResourceHomeTenantID != r.ResourceHomeTenantID {
+			got, want := r.ResourceHomeTenantID, d.ResourceHomeTenantID
+			return fmt.Errorf(".Resources[%d].ResourceHomeTenantID %q must match Data's %q", i, got, want)
+		}
 
-			// Ensure all resources have same tenant IDs (following APIVersion pattern above)
-			if rscHomeTenantID != unique.Make(r.HomeTenantID) {
-				return fmt.Errorf(".Resources[%d].HomeTenantID %q must match other resources (%q)",
-					i, r.HomeTenantID, rscHomeTenantID.Value())
-			}
-			if rscResourceHomeTenantID != unique.Make(r.ResourceHomeTenantID) {
-				return fmt.Errorf(".Resources[%d].ResourceHomeTenantID %q must match other resources (%q)",
-					i, r.ResourceHomeTenantID, rscResourceHomeTenantID.Value())
-			}
+		// Note: the two checks above already require every resource's tenant IDs to equal Data's,
+		// which transitively requires all resources to agree with each other.
 
-			if rscAPIVersion != r.APIVersion {
-				return errors.New("all resources must have the same APIVersion")
-			}
+		// The effective version is the resource's own when set, otherwise Data's. It is never empty here:
+		// the branch above already errors when both are unset. Everything below compares effective values,
+		// so a resource may match Data's version or defer to it by leaving its own empty -- which is what
+		// the field docs promise. Comparing raw values rejected that mix.
+		effAPIVersion := r.APIVersion
+		if effAPIVersion == "" {
+			effAPIVersion = d.APIVersion
+		}
+		if i == 0 {
+			rscAPIVersion = effAPIVersion
+		}
+		if rscAPIVersion != effAPIVersion {
+			return errors.New("all resources must resolve to the same APIVersion")
+		}
 
-			if rscAPIVersion != "" {
-				if r.ArmResource.APIVersion != rscAPIVersion {
-					return errors.New("all resources must have the same APIVersion and ArmResource.APIVersion must match")
-				} else if r.ArmResource.APIVersion != r.APIVersion {
-					return errors.New("all resources must have the same APIVersion and ArmResource.APIVersion must match")
-				}
-			}
+		// An empty ArmResource.APIVersion inherits the effective version rather than conflicting with it,
+		// which keeps NewArmResource(..., "", ...) valid instead of failing later at send time.
+		armVer := r.ArmResource.APIVersion
+		if armVer != "" && armVer != effAPIVersion {
+			return fmt.Errorf(".Resources[%d].ArmResource.APIVersion %q != effective %q", i, armVer, effAPIVersion)
 		}
 	}
 
@@ -207,10 +232,51 @@ func (r *ResourcesBlobInfo) Validate() error {
 	if r.BlobURI == "" {
 		return errors.New(".ResourcesBlobInfo.BlobURI is required")
 	}
-	if r.BlobSize == 0 {
+
+	switch {
+	case r.BlobSize == 0:
 		return errors.New(".ResourcesBlobInfo.BlobSize is required")
+	case r.BlobSize < 0:
+		return fmt.Errorf(".ResourcesBlobInfo.BlobSize(%d) must be positive", r.BlobSize)
 	}
 	return nil
+}
+
+// Status is the status of the operation on a resource as reported to ARN. As a producer the
+// SDK always reports StatusCode ("OK"), so the zero value serializes as StatusCode rather than
+// being omitted and callers never need to set this.
+type Status string
+
+// Compile-time checks. MarshalJSONTo is the only thing that puts statusCode on the wire, so if a
+// dependency bump changed either interface the field would silently stop being emitted.
+var (
+	_ jsonv2.MarshalerTo = Status("")
+	_ jsonv2.Marshaler   = Status("")
+)
+
+// MarshalJSONTo implements jsonv2.MarshalerTo. An empty Status is written as "OK". Doing the
+// defaulting at serialization time means the wire format is correct no matter when the value is
+// marshaled, and nothing has to write back into the caller's resource slice to achieve it.
+func (s Status) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return enc.WriteToken(jsontext.String(string(s.orDefault())))
+}
+
+// MarshalJSON implements jsonv2.Marshaler so the default also applies under encoding/json. The SDK
+// itself marshals with jsonv2, which prefers MarshalJSONTo, but NotificationResource is a public
+// type and a caller using the standard library would otherwise emit an empty statusCode that ARN
+// rejects. Every enum in enums.go carries the same v1 method for the same reason.
+func (s Status) MarshalJSON() ([]byte, error) {
+	// Delegate the encoding rather than concatenating quotes: a Status carrying a quote, backslash or
+	// control byte must be escaped, and hand-rolling that silently corrupted the value.
+	return json.Marshal(string(s.orDefault()))
+}
+
+// orDefault applies the producer rule that an unset Status means "OK".
+func (s Status) orDefault() Status {
+	if s == "" {
+		return StatusCode
+	}
+	return s
 }
 
 // NotificationResource is the resource payload.
@@ -238,16 +304,17 @@ type NotificationResource struct {
 	// CorrelationID is the correlation identifier associated with the operation that resulted in the activity
 	// reflected in the notification. This is normally a GUID.
 	CorrelationID string `json:"correlationId,omitzero"`
-	// StatusCode is the HTTP status code of the operation. As a producer, this is always "OK" set by StatusCode constant.
-	// This is automatically set.
-	StatusCode string `json:"statusCode,omitzero"` // "OK" or "BADRequest"
+	// StatusCode is the HTTP status code of the operation. As a producer this is always "OK".
+	// Leave it unset: the zero value serializes as the StatusCode constant. No omitzero here, or
+	// the zero value would be dropped before Status.MarshalJSONTo could default it.
+	StatusCode Status `json:"statusCode"`
 	// HomeTenantID is the tenant ID of the home tenant of the resource.
-	// This is optional except for provider scoped resources. It can also be specified
-	// at the Data level. If so, these should match.
+	// This is optional except for provider scoped resources, but it must always be identical to
+	// Data.HomeTenantID: set it on both or neither, never on only one.
 	HomeTenantID string `json:"homeTenantId,omitzero"`
 	// ResourceHomeTenantID is the tenant id in which the resources in this notification exist.
-	// This is optional.
-	// It can also be specified at the Data level. If so, these should match.
+	// This is optional, but it must always be identical to Data.ResourceHomeTenantID: set it on
+	// both or neither, never on only one.
 	ResourceHomeTenantID string `json:"resourceHomeTenantId,omitzero"`
 	// ResourceSystemProperties provides details about the change action, who created and modified the resource, and when.
 	ResourceSystemProperties ResourceSystemProperties `json:"resourceSystemProperties,omitzero"`
@@ -258,8 +325,10 @@ func (n NotificationResource) Validate() error {
 	if n.ResourceID == "" {
 		return errors.New(".ResourceID is required")
 	}
-	if n.StatusCode != StatusCode {
-		return errors.New(".StatusCode is required as OK")
+	// Empty is legal and means "serialize as StatusCode". As a producer we never report
+	// anything else, so any other value is a caller bug. See Status.MarshalJSONTo.
+	if n.StatusCode != "" && n.StatusCode != StatusCode {
+		return fmt.Errorf(".StatusCode must be empty or %q, got %q", StatusCode, n.StatusCode)
 	}
 
 	if n.ArmResource != (ArmResource{}) {

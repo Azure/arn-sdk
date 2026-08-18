@@ -12,6 +12,21 @@ on:
 permissions:
   contents: read
 
+# Pin the toolchain the module is actually built and scanned with. GOTOOLCHAIN defaults to
+# "auto", which silently uses whatever go.mod's go directive demands and makes the go-version
+# pins below meaningless -- including for govulncheck, whose standard-library findings depend
+# on the toolchain version it builds with.
+#
+# The "+auto" suffix makes this a floor rather than an exact pin: never older than go1.26.6
+# (which is what keeps the standard-library CVEs fixed), but still free to switch up when a
+# module requires newer. An exact pin would break the govulncheck job, which runs
+# "go install golang.org/x/vuln/cmd/govulncheck@latest" and needs that freedom.
+#
+# Keep this in sync with the go-version inputs below. It is deliberately ahead of go.mod's
+# "go" directive, which is the minimum this module imposes on consumers, not what CI builds with.
+env:
+  GOTOOLCHAIN: go1.26.6+auto
+
 jobs:
   build:
     name: Build
@@ -27,7 +42,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
         with:
-          go-version: 1.23.0
+          go-version: 1.26.6
 
       - name: Build
         run: go build -v ./...
@@ -41,5 +56,5 @@ jobs:
       - id: govulncheck
         uses: golang/govulncheck-action@v1
         with:
-          go-version-input: 1.23.0
+          go-version-input: 1.26.6
           go-package: ./...

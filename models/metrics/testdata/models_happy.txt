@@ -55,7 +55,7 @@ arn_sdk_event_sent_total{inline="true",otel_scope_name="testmeter",otel_scope_sc
 # TYPE arn_sdk_promise_total counter
 arn_sdk_promise_total{error="false",otel_scope_name="testmeter",otel_scope_schema_url="",otel_scope_version="v0.1.0",timeout="false"} 1
 arn_sdk_promise_total{error="true",otel_scope_name="testmeter",otel_scope_schema_url="",otel_scope_version="v0.1.0",timeout="false"} 1
-arn_sdk_promise_total{error="true",otel_scope_name="testmeter",otel_scope_schema_url="",otel_scope_version="v0.1.0",timeout="true"} 1
+arn_sdk_promise_total{error="true",otel_scope_name="testmeter",otel_scope_schema_url="",otel_scope_version="v0.1.0",timeout="true"} 2
 # HELP target_info Target metadata
 # TYPE target_info gauge
-target_info{"service.name"="arn_test","telemetry.sdk.language"="go","telemetry.sdk.name"="opentelemetry","telemetry.sdk.version"="latest"} 1
+target_info{service_name="arn_test",telemetry_sdk_language="go",telemetry_sdk_name="opentelemetry",telemetry_sdk_version="latest"} 1

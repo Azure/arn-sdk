@@ -11,11 +11,15 @@ import (
 
 // Notifications is the interface that must be implemented by all notification types across models.
 type Notifications interface {
-	// Promise blocks until the promise for the notification is resolved or the context is done.
-	// Must send an models.ErrPromiseTimeout error if the context is done.
+	// Promise blocks until the promise for the notification is resolved or the context is done. If the
+	// context is done it must return an error for which errors.Is(err, models.ErrPromiseTimeout) is true;
+	// wrapping the context error alongside it is permitted.
+	//
+	// The implementation owns the promise channel handed to it by SetPromise and must return it to
+	// conn.PromisePool, but only on the path that receives a result. Returning it after a context timeout
+	// pools a channel the sender still holds, and its late write is then delivered to whichever
+	// notification draws that channel next.
 	Promise(context.Context) error
-	// Recycle is used to recycle the internal promise channel once the notification is not in use.
-	Recycle()
 	// Attrs provides methods to get the attributes of the notification.
 	Attrs
 	// Setters provides methods to set private fields.
@@ -53,7 +57,8 @@ type Senders interface {
 type Setters interface {
 	// SetCtx sets the context for the notification.
 	SetCtx(context.Context) Notifications
-	// SetPromise sets the promise for the notification.
+	// SetPromise sets the promise for the notification. Ownership of the channel passes to the
+	// implementation; see Promise for when it must be returned to the pool.
 	SetPromise(chan error) Notifications
 }
 

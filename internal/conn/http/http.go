@@ -43,15 +43,6 @@ var changeScope = map[string]bool{
 	cloud.AzurePublic.ActiveDirectoryAuthorityHost:     true,
 }
 
-var readerPool = sync.NewPool(
-	context.Background(),
-	"readerPool",
-	func() *bytes.Reader {
-		return bytes.NewReader(nil)
-	},
-	sync.WithBuffer(10),
-)
-
 var flatePool = sync.NewPool(
 	context.Background(),
 	"flatePool",
@@ -117,9 +108,14 @@ func (t *zlibTransport) Do(req *policy.Request) (*http.Response, error) {
 		default:
 		}
 
-		// Update the request with the compressed body.
-		httpReq.Body = io.NopCloser(compressedBuffer)
-		httpReq.ContentLength = int64(compressedBuffer.Len())
+		// The body is copied out of the pooled buffer rather than handed over directly. The transport
+		// writes the request body on its own goroutine and RoundTrip returns once response headers
+		// arrive, so an early response would leave that goroutine reading a buffer this function has
+		// already returned to the pool -- and *bytes.Buffer implements Resetter, so Put() would Reset()
+		// it mid-read. The pool still does its job as compression scratch space.
+		body := bytes.Clone(compressedBuffer.Bytes())
+		httpReq.Body = io.NopCloser(bytes.NewReader(body))
+		httpReq.ContentLength = int64(len(body))
 		httpReq.Header.Set("Content-Encoding", "deflate")
 	}
 
@@ -139,7 +135,7 @@ type Client struct {
 // Option is a function that configures the client.
 type Option func(*Client) error
 
-// WihtoutCompression turns off deflate compression for the client.
+// WithoutCompression turns off deflate compression for the client.
 func WithoutCompression() Option {
 	return func(c *Client) error {
 		c.compress = false
@@ -157,7 +153,7 @@ type Sender interface {
 func WithFake(s Sender) Option {
 	return func(c *Client) error {
 		if !testing.Testing() {
-			return fmt.Errorf("http.WithFakeSender() can only be used in tests")
+			return fmt.Errorf("http.WithFake() can only be used in tests")
 		}
 		c.fakeSender = s
 		return nil
@@ -203,14 +199,23 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 		return nil, err
 	}
 
-	if path.Dir(endpoint) != "arnnotify" {
-		endpoint = runtime.JoinPaths(endpoint, "/arnnotify")
-	}
+	endpoint = notifyEndpoint(endpoint)
 
-	return &Client{
-		endpoint: endpoint,
-		client:   azclient,
-	}, nil
+	// Assign onto c rather than returning a fresh Client: the option loop above configured c, and
+	// building a new value here silently discarded everything it set.
+	c.endpoint = endpoint
+	c.client = azclient
+	return c, nil
+}
+
+// notifyEndpoint appends the ARN notify suffix unless the endpoint already carries it. It uses
+// path.Base, not path.Dir: Dir returns the parent ("https:/host"), so it never equalled the suffix and
+// an endpoint already ending in /arnnotify had a second one appended, 404ing every send.
+func notifyEndpoint(endpoint string) string {
+	if path.Base(endpoint) == "arnnotify" {
+		return endpoint
+	}
+	return runtime.JoinPaths(endpoint, "/arnnotify")
 }
 
 // Send sends an event (converted to JSON bytes) to the ARN receiver API.
@@ -222,11 +227,9 @@ func (c *Client) Send(ctx context.Context, event []byte, headers []string) error
 		return fmt.Errorf("headers must be key-value pairs")
 	}
 
-	read := readerPool.Get(ctx)
-	read.Reset(event)
-	defer readerPool.Put(ctx, read)
-
-	req, err := c.setup(ctx, read, headers)
+	// Not pooled: this reader becomes the request body, and the transport may still be reading it after
+	// Do() returns. Recycling it would let a later Reset() race that read. See zlibTransport.Do.
+	req, err := c.setup(ctx, bytes.NewReader(event), headers)
 	if err != nil {
 		return err
 	}

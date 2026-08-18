@@ -113,28 +113,27 @@ Example - sending a notification synchronously using the v3 model using a AKS no
 
 	// Note: node is a k8 Node object that is JSON serializable
 	// Note: rscID is the *arm.ResourceID of the node, which is created with  github.com/Azure/azure-sdk-for-go/sdk/azcore/arm.ParseResourceID()
-	// You can get a rescID with arm.ParseResourceID(path.Join(p.rescPrefix, suffix))
+	// You can get a rscID with arm.ParseResourceID(path.Join(p.rescPrefix, suffix))
 	// where rescPrefix looks like: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test/providers/Microsoft.ContainerService/managedClusters/something/
 	// and suffix is something like: nodes/aks-nodepool1-12345678-vmss000000
 	// Suffix is negotiated with the ARN team.
 
-	armRsc, err := NewArmResource(types.ActSnapshot, rscID, "2024-01-01", nil)
+	armRsc, err := NewArmResource(types.ActSnapshot, rscID, "2024-01-01", node)
 	if err != nil {
 		return err
 	}
 
-	notification := msgs.Notification{
+	notification := msgs.Notifications{
 		ResourceLocation: "eastus",
 		PublisherInfo: "Microsoft.ContainerService",
 		APIVersion: "2024-01-01",
 		Data: []types.NotificationResource{
 			{
-				Data: node, // This is the Node object that will be serialized to JSON.
 				ResourceEventTime: n.GetCreationTimestamp().Time.UTC(),
-				ArmResource: armRsc,
-				ResourceID: rescID.String(),
+				ArmResource: armRsc, // Carries the Node object passed as props to NewArmResource above.
+				ResourceID: rscID.String(),
 				ResourceSystemProperties: types.ResourceSystemProperties{
-					Updated: n.GetCreationTimestamp().Time.UTC(),
+					ModifiedTime: n.GetCreationTimestamp().Time.UTC(),
 					ChangeAction: types.CAUpdate,
 				},
 			},
@@ -150,10 +149,9 @@ Example - sending a notification asynchronously using the v3 model using a AKS n
 	notification := arnClient.Async(ctx, notificiation, true)
 	... // Do stuff
 
-	if err := notification.Promise(); err != nil {
+	if err := notification.Promise(ctx); err != nil {
 		// Handle error
 	}
-	notification.Recycle() // Reuses the promise for the next notification
 
 Example - sending a notification asynchronously using the v3 model using a AKS node event and without a promise:
 
@@ -170,9 +168,9 @@ Example - sending a notification asynchronously using the v3 model using a AKS n
 package client
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
-	"sync/atomic"
 	"testing"
 
 	"github.com/Azure/arn-sdk/internal/conn"
@@ -195,8 +193,6 @@ type ARN struct {
 	in   chan models.Notifications
 	errs chan error
 
-	orderID atomic.Uint64
-
 	testConn func(n models.Notifications)
 
 	sigSenderClosed chan struct{}
@@ -213,6 +209,9 @@ type Option func(*ARN) error
 // WithLogger sets the logger on the client. By default it uses slog.Default().
 func WithLogger(log *slog.Logger) Option {
 	return func(c *ARN) error {
+		if log == nil {
+			return fmt.Errorf("logger cannot be nil")
+		}
 		c.logger = log
 		return nil
 	}
@@ -372,6 +371,7 @@ func (a BlobArgs) validate() error {
 // New creates a new ARN client.
 func New(ctx context.Context, args Args, options ...Option) (*ARN, error) {
 	a := &ARN{
+		logger:          slog.Default(),
 		errs:            make(chan error, 1),
 		sigSenderClosed: make(chan struct{}),
 	}
@@ -448,6 +448,7 @@ func (a *ARN) Errors() <-chan error {
 // If the context is canceled, this will return the context error. Thread-safe (however, order usually matters
 // in ARN).
 func (a *ARN) Notify(ctx context.Context, n models.Notifications) error {
+	noTimeout := context.WithoutCancel(ctx)
 	x := n.DataCount()
 	switch {
 	case x == 0:
@@ -456,22 +457,38 @@ func (a *ARN) Notify(ctx context.Context, n models.Notifications) error {
 		return models.ErrBatchSize
 	}
 
-	n = n.SetCtx(ctx)
-	n = n.SetPromise(conn.PromisePool.Get(ctx))
-	defer n.Recycle()
-	modelmetrics.ActivePromise(context.Background())
+	promise := conn.PromisePool.Get(ctx)
+	n = n.SetCtx(ctx).SetPromise(promise)
+	modelmetrics.ActivePromise(noTimeout)
 
+	// Both returns below happen before the notification reaches the sender, so nothing else can hold the
+	// channel and it is safe to reuse immediately. Once it is enqueued, ownership passes to Promise(),
+	// which recycles it on the branch that receives the result.
 	if ctx.Err() != nil {
+		conn.PromisePool.Put(ctx, promise)
+		modelmetrics.Promise(noTimeout, ctx.Err())
 		return ctx.Err()
 	}
 
 	select {
 	case <-ctx.Done():
+		conn.PromisePool.Put(ctx, promise)
+		modelmetrics.Promise(noTimeout, ctx.Err())
 		return ctx.Err()
 	case a.in <- n:
 	}
 
-	return n.Promise(context.Background())
+	// The caller's context is honored here, as this method's doc promises. That is safe because Promise()
+	// no longer pools the channel on a timeout -- an abandoned promise is left to the garbage collector
+	// rather than handed to another notification.
+	err := n.Promise(ctx)
+	if errors.Is(err, models.ErrPromiseTimeout) {
+		// Promise() leaves the gauge alone on a timeout because an Async caller can wait again. Notify
+		// does not hand the notification back, so this promise is unrecoverable and has to be settled
+		// here. The channel stays unpooled: the sender may still write to it.
+		modelmetrics.PromiseAbandoned(noTimeout)
+	}
+	return err
 }
 
 // Async sends a notification to the ARN service asynchronously. This will not block waiting for a response.
@@ -479,6 +496,10 @@ func (a *ARN) Notify(ctx context.Context, n models.Notifications) error {
 // to the ARN.Errors() channel. The returned Notification will have the Promise set if promise == true.
 // NOTE: If you don't use the returned Notification for a Promise instead of the one you passed, you
 // will not get the results.
+// Ownership of the notification and everything it references transfers to the SDK; it is read on an internal
+// goroutine after this returns. With promise == true you may reclaim it once Promise() returns, and you should
+// call Promise() so the result is delivered. With promise == false there is no completion signal, so the transfer
+// is permanent. See the ownership note on msgs.Notifications.
 // Thread-safe.
 func (a *ARN) Async(ctx context.Context, n models.Notifications, promise bool) models.Notifications {
 	n = n.SetCtx(ctx)
