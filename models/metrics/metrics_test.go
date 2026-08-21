@@ -46,13 +46,15 @@ func TestModelsMetrics(t *testing.T) {
 				Promise(ctx, models.ErrPromiseTimeout)
 				ActivePromise(ctx)
 				Promise(ctx, models.ErrBatchSize)
-				// A promise that gave up on its context: counted as completed, but the gauge is left
-				// alone because the notification is still in flight.
+				// Notify's case: the wait gave up and nobody can wait again, so the timeout is the
+				// promise's terminal outcome. One wait-timeout, one completion, gauge settled.
 				ActivePromise(ctx)
-				PromiseTimeout(ctx)
-				// Notify's case: the promise timed out and nobody can wait on it again, so the gauge
-				// is settled without recording a second completion.
-				PromiseAbandoned(ctx)
+				PromiseWaitTimeout(ctx)
+				Promise(ctx, models.ErrPromiseTimeout)
+				// Async's case: the wait gave up but the caller still holds the notification. Counted
+				// as a wait only -- no completion, and the gauge stays up because it is still in flight.
+				ActivePromise(ctx)
+				PromiseWaitTimeout(ctx)
 			},
 		},
 		{
@@ -67,13 +69,15 @@ func TestModelsMetrics(t *testing.T) {
 				Promise(ctx, models.ErrPromiseTimeout)
 				ActivePromise(ctx)
 				Promise(ctx, models.ErrBatchSize)
-				// A promise that gave up on its context: counted as completed, but the gauge is left
-				// alone because the notification is still in flight.
+				// Notify's case: the wait gave up and nobody can wait again, so the timeout is the
+				// promise's terminal outcome. One wait-timeout, one completion, gauge settled.
 				ActivePromise(ctx)
-				PromiseTimeout(ctx)
-				// Notify's case: the promise timed out and nobody can wait on it again, so the gauge
-				// is settled without recording a second completion.
-				PromiseAbandoned(ctx)
+				PromiseWaitTimeout(ctx)
+				Promise(ctx, models.ErrPromiseTimeout)
+				// Async's case: the wait gave up but the caller still holds the notification. Counted
+				// as a wait only -- no completion, and the gauge stays up because it is still in flight.
+				ActivePromise(ctx)
+				PromiseWaitTimeout(ctx)
 			},
 		},
 	}

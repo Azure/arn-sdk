@@ -136,9 +136,10 @@ func (n Notifications) timedOut(ctx context.Context) error {
 		return n.resolved(ctx, e)
 	default:
 	}
-	// Only the completed counter is recorded. The gauge is decremented by resolved(), because the
-	// promise is not finished -- the caller may wait on it again with a fresh context.
-	metrics.PromiseTimeout(context.Background())
+	// Recorded on its own series, not as a completion: the promise is not finished and the caller may
+	// wait on it again with a fresh context, so counting this in promises.completed would report more
+	// completions than promises. The gauge is left to resolved() for the same reason.
+	metrics.PromiseWaitTimeout(context.Background())
 	return fmt.Errorf("%w: %w", models.ErrPromiseTimeout, ctx.Err())
 }
 

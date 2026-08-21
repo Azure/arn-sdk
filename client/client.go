@@ -483,10 +483,11 @@ func (a *ARN) Notify(ctx context.Context, n models.Notifications) error {
 	// rather than handed to another notification.
 	err := n.Promise(ctx)
 	if errors.Is(err, models.ErrPromiseTimeout) {
-		// Promise() leaves the gauge alone on a timeout because an Async caller can wait again. Notify
-		// does not hand the notification back, so this promise is unrecoverable and has to be settled
-		// here. The channel stays unpooled: the sender may still write to it.
-		modelmetrics.PromiseAbandoned(noTimeout)
+		// Promise() treats a timeout as non-terminal because an Async caller still holds the notification
+		// and can wait again. Notify does not hand it back, so here the timeout is the promise's final
+		// outcome and is recorded as one -- which also decrements the gauge. The channel stays unpooled:
+		// the sender may still write to it.
+		modelmetrics.Promise(noTimeout, err)
 	}
 	return err
 }

@@ -27,8 +27,9 @@ type eventMetrics struct {
 }
 
 type promiseMetrics struct {
-	current   metric.Int64UpDownCounter
-	completed metric.Int64Counter
+	current      metric.Int64UpDownCounter
+	completed    metric.Int64Counter
+	waitTimeouts metric.Int64Counter
 }
 
 var (
@@ -69,6 +70,14 @@ func Init(meter metric.Meter) error {
 	}
 
 	promises.current, err = meter.Int64UpDownCounter(metricName("current_promise_count"), metric.WithDescription("current number of promises made by the ARN client"))
+	if err != nil {
+		return err
+	}
+
+	promises.waitTimeouts, err = meter.Int64Counter(
+		metricName("promise_wait_timeout"),
+		metric.WithDescription("promise waits that gave up on their context and may be retried; not a promise completion"),
+	)
 	if err != nil {
 		return err
 	}
@@ -135,26 +144,13 @@ func Promise(ctx context.Context, err error) {
 	}
 }
 
-// PromiseTimeout records a promise wait that gave up on its context. It increments the completed
-// counter but deliberately leaves promises.current alone: the notification is still in flight and the
-// caller may wait again, so the gauge is only decremented by Promise() when the promise resolves.
-func PromiseTimeout(ctx context.Context) {
-	opt := metric.WithAttributes(
-		attribute.Key(errorLabel).Bool(true),
-		attribute.Key(timeoutLabel).Bool(true),
-	)
-	if promises.completed != nil {
-		promises.completed.Add(ctx, 1, opt)
-	}
-}
-
-// PromiseAbandoned decrements promises.current for a promise nobody can wait on again. It records no
-// completion, because PromiseTimeout already counted one. Client.Notify() needs this: unlike Async() it
-// does not hand the notification back, so a timed-out promise there is unrecoverable rather than
-// merely unfinished.
-func PromiseAbandoned(ctx context.Context) {
-	if promises.current != nil {
-		promises.current.Add(ctx, -1)
+// PromiseWaitTimeout records a wait that gave up on its context. It touches neither promises.completed
+// nor promises.current, because a wait is not an outcome: the notification is still in flight and the
+// caller may wait again. Counting it as a completion made promises.completed exceed the number of
+// promises whenever a caller retried, which is the pattern Promise() documents as safe.
+func PromiseWaitTimeout(ctx context.Context) {
+	if promises.waitTimeouts != nil {
+		promises.waitTimeouts.Add(ctx, 1)
 	}
 }
 

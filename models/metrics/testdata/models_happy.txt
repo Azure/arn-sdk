@@ -1,6 +1,6 @@
 # HELP arn_sdk_current_promise_count current number of promises made by the ARN client
 # TYPE arn_sdk_current_promise_count gauge
-arn_sdk_current_promise_count{otel_scope_name="testmeter",otel_scope_schema_url="",otel_scope_version="v0.1.0"} 0
+arn_sdk_current_promise_count{otel_scope_name="testmeter",otel_scope_schema_url="",otel_scope_version="v0.1.0"} 1
 # HELP arn_sdk_event_sent_bytes_total total number of bytes in event data sent by the ARN client
 # TYPE arn_sdk_event_sent_bytes_total counter
 arn_sdk_event_sent_bytes_total{inline="false",otel_scope_name="testmeter",otel_scope_schema_url="",otel_scope_version="v0.1.0",success="false"} 0
@@ -56,6 +56,9 @@ arn_sdk_event_sent_total{inline="true",otel_scope_name="testmeter",otel_scope_sc
 arn_sdk_promise_total{error="false",otel_scope_name="testmeter",otel_scope_schema_url="",otel_scope_version="v0.1.0",timeout="false"} 1
 arn_sdk_promise_total{error="true",otel_scope_name="testmeter",otel_scope_schema_url="",otel_scope_version="v0.1.0",timeout="false"} 1
 arn_sdk_promise_total{error="true",otel_scope_name="testmeter",otel_scope_schema_url="",otel_scope_version="v0.1.0",timeout="true"} 2
+# HELP arn_sdk_promise_wait_timeout_total promise waits that gave up on their context and may be retried; not a promise completion
+# TYPE arn_sdk_promise_wait_timeout_total counter
+arn_sdk_promise_wait_timeout_total{otel_scope_name="testmeter",otel_scope_schema_url="",otel_scope_version="v0.1.0"} 2
 # HELP target_info Target metadata
 # TYPE target_info gauge
 target_info{service_name="arn_test",telemetry_sdk_language="go",telemetry_sdk_name="opentelemetry",telemetry_sdk_version="latest"} 1
