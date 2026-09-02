@@ -31,6 +31,10 @@ type Service struct {
 	clientErrs chan error
 	in         chan models.Notifications
 
+	// sigSenderClosed is closed by sender() once it has drained in. Close() waits on it so that
+	// everything Send() accepted is delivered before Close() returns.
+	sigSenderClosed chan struct{}
+
 	log *slog.Logger
 }
 
@@ -58,7 +62,8 @@ func New(httpClient *http.Client, store *storage.Client, clientErrs chan error, 
 	}
 
 	conn := &Service{
-		in: make(chan models.Notifications, 1),
+		in:              make(chan models.Notifications, 1),
+		sigSenderClosed: make(chan struct{}),
 
 		http:       httpClient,
 		store:      store,
@@ -76,9 +81,13 @@ func New(httpClient *http.Client, store *storage.Client, clientErrs chan error, 
 	return conn, nil
 }
 
-// Close closes the connection to the ARN service.
+// Close closes the connection to the ARN service. It blocks until every notification that Send()
+// accepted has been sent and its promise resolved. Returning before that drained the queue into a
+// goroutine the caller had no way to wait on, so a process that exited after Close() silently
+// dropped the notifications still in flight.
 func (r *Service) Close() error {
 	close(r.in)
+	<-r.sigSenderClosed
 	return nil
 }
 
@@ -105,6 +114,8 @@ func (s *Service) Send(notify models.Notifications) {
 
 // sender sends notifications to the ARN service.
 func (s *Service) sender() {
+	defer close(s.sigSenderClosed)
+
 	for n := range s.in {
 		if err := n.SendEvent(s.http, s.store); err != nil {
 			n.SendPromise(err, s.clientErrs)

@@ -87,7 +87,7 @@ func TestSend(t *testing.T) {
 		},
 	}
 
-	s := &Service{in: make(chan models.Notifications, 1)}
+	s := &Service{in: make(chan models.Notifications, 1), sigSenderClosed: make(chan struct{})}
 	go s.sender()
 	defer s.Close()
 

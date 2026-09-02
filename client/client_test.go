@@ -3,13 +3,19 @@ package client
 import (
 	"errors"
 	"log/slog"
+	"net/url"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Azure/arn-sdk/internal/conn/http"
 	"github.com/Azure/arn-sdk/internal/conn/maxvals"
 	"github.com/Azure/arn-sdk/internal/conn/storage"
 	"github.com/Azure/arn-sdk/models"
+	"github.com/Azure/arn-sdk/models/v3/msgs"
+	"github.com/Azure/arn-sdk/models/v3/schema/types"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/gostdlib/base/context"
 )
 
@@ -400,5 +406,70 @@ func TestWithLogger(t *testing.T) {
 		if a.logger != test.log {
 			t.Errorf("TestWithLogger(%s): got a.logger == %v, want the option's logger", test.name, a.logger)
 		}
+	}
+}
+
+// closeSender counts sends and is the fake wired into New() by TestClose.
+type closeSender struct {
+	sent *atomic.Int64
+}
+
+func (c closeSender) Send(ctx context.Context, event []byte) error {
+	c.sent.Add(1)
+	return nil
+}
+
+// closeUploader satisfies WithFakeClients; TestClose never reaches the blob path.
+type closeUploader struct{}
+
+func (closeUploader) Upload(ctx context.Context, id string, data []byte) (*url.URL, error) {
+	return url.Parse("https://example.com/blob")
+}
+
+// TestClose pins that Close() flushes. It used to close the internal channels and return while the
+// conn sender was still draining them, so a service that exited after Close() silently dropped the
+// notifications Async() had already accepted.
+func TestClose(t *testing.T) {
+	t.Parallel()
+
+	const count = 200
+
+	ctx := t.Context()
+	var sent atomic.Int64
+
+	a, err := New(ctx, Args{}, WithFakeClients(closeSender{&sent}, closeUploader{}))
+	if err != nil {
+		t.Fatalf("TestClose: New(): got err == %s, want err == nil", err)
+	}
+
+	rscID, err := arm.ParseResourceID("/subscriptions/26fe00f8-9173-4872-9134-bb1d2e00343a/resourceGroups/test/providers/Microsoft.ContainerService/managedClusters/mycluster")
+	if err != nil {
+		t.Fatalf("TestClose: ParseResourceID(): got err == %s, want err == nil", err)
+	}
+	armRsc, err := types.NewArmResource(types.ActSnapshot, rscID, "2024-01-01", map[string]string{"k": "v"})
+	if err != nil {
+		t.Fatalf("TestClose: NewArmResource(): got err == %s, want err == nil", err)
+	}
+	n := msgs.Notifications{
+		ResourceLocation: "eastus",
+		PublisherInfo:    "Microsoft.ContainerService",
+		APIVersion:       "2024-01-01",
+		Data: []types.NotificationResource{
+			{
+				ResourceEventTime:        time.Now().UTC(),
+				ArmResource:              armRsc,
+				ResourceID:               rscID.String(),
+				ResourceSystemProperties: types.ResourceSystemProperties{ModifiedTime: time.Now().UTC(), ChangeAction: types.CAUpdate},
+			},
+		},
+	}
+
+	for i := 0; i < count; i++ {
+		a.Async(ctx, n, false)
+	}
+	a.Close()
+
+	if got := sent.Load(); got != count {
+		t.Errorf("TestClose: got %d notifications sent, want %d", got, count)
 	}
 }

@@ -424,7 +424,10 @@ func New(ctx context.Context, args Args, options ...Option) (*ARN, error) {
 	return a, nil
 }
 
-// Close closes the client. This will close the In() channel.
+// Close closes the client. This will close the In() channel. It blocks until every notification that
+// Notify() or Async() accepted has been sent and its promise resolved, so it is safe to exit the
+// process once Close() returns. Not safe to call twice, and Notify()/Async() must not be called
+// after it.
 func (a *ARN) Close() {
 	close(a.in)
 

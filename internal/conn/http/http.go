@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
+	"strconv"
 	"testing"
 
 	"github.com/Azure/arn-sdk/internal/build"
@@ -117,6 +119,21 @@ func (t *zlibTransport) Do(req *policy.Request) (*http.Response, error) {
 		httpReq.Body = io.NopCloser(bytes.NewReader(body))
 		httpReq.ContentLength = int64(len(body))
 		httpReq.Header.Set("Content-Encoding", "deflate")
+
+		// GetBody must be replaced alongside Body: azcore's SetBody() points it at the original
+		// uncompressed stream, and net/http calls it to rebuild the body when it replays a request on a
+		// 307/308 redirect. Left alone it handed the redirect the uncompressed JSON while these headers
+		// still advertised deflate and the compressed length, so the transport killed the connection
+		// ("ContentLength=N with Body length M") and every redirected send failed after burning the
+		// full retry budget. Body, ContentLength, Content-Encoding and GetBody describe one payload and
+		// have to move together.
+		httpReq.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(body)), nil
+		}
+
+		// Kept in step for the same reason. net/http writes the field, not this header, so a stale value
+		// here does not corrupt the request, but it is what request dumps and later policies read.
+		httpReq.Header.Set("Content-Length", strconv.FormatInt(int64(len(body)), 10))
 	}
 
 	// Use the base RoundTripper to perform the actual request.
@@ -199,7 +216,10 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 		return nil, err
 	}
 
-	endpoint = notifyEndpoint(endpoint)
+	endpoint, err = notifyEndpoint(endpoint)
+	if err != nil {
+		return nil, err
+	}
 
 	// Assign onto c rather than returning a fresh Client: the option loop above configured c, and
 	// building a new value here silently discarded everything it set.
@@ -208,14 +228,24 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 	return c, nil
 }
 
-// notifyEndpoint appends the ARN notify suffix unless the endpoint already carries it. It uses
-// path.Base, not path.Dir: Dir returns the parent ("https:/host"), so it never equalled the suffix and
-// an endpoint already ending in /arnnotify had a second one appended, 404ing every send.
-func notifyEndpoint(endpoint string) string {
-	if path.Base(endpoint) == "arnnotify" {
-		return endpoint
+// notifyEndpoint appends the ARN notify suffix unless the endpoint already carries it. Both halves of
+// the guard have bitten us: path.Dir returns the parent ("https:/host") so it never equalled the
+// suffix, and path.Base over the raw string returns the last segment with any query still attached
+// ("arnnotify?x=1"), which does not equal it either. Either way a second suffix was appended and every
+// send 404ed. Matching on the parsed u.Path fixes both, and rebuilding from the URL keeps the query.
+func notifyEndpoint(endpoint string) (string, error) {
+	const suffix = "arnnotify"
+
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("could not parse ARN endpoint %q: %w", endpoint, err)
 	}
-	return runtime.JoinPaths(endpoint, "/arnnotify")
+	if path.Base(u.Path) == suffix {
+		return endpoint, nil
+	}
+
+	u.Path = path.Join(u.Path, suffix)
+	return u.String(), nil
 }
 
 // Send sends an event (converted to JSON bytes) to the ARN receiver API.
