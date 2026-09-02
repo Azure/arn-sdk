@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+
 	"github.com/kylelemons/godebug/pretty"
 )
 
@@ -95,6 +97,118 @@ func TestSetup(t *testing.T) {
 			if req.Raw().Header.Get(k) != v[0] {
 				t.Fatalf("TestSetup(%s): req.Raw().Header.Get(%s): got %s, want %s", test.name, k, req.Raw().Header.Get(k), v)
 			}
+		}
+	}
+}
+
+// TestEndpointSuffix pins how the ARN notify suffix is applied. The guard has been wrong twice, and
+// both regressions doubled the suffix and 404ed every send: path.Dir returned the parent rather than
+// the last segment, and path.Base over the raw endpoint returned that segment with the query still
+// attached ("arnnotify?x=1"). The query rows are what hold the current fix in place.
+func TestEndpointSuffix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		endpoint string
+		want     string
+		wantErr  bool
+	}{
+		{
+			name:     "Success: the suffix is appended when absent",
+			endpoint: "https://host.example.com",
+			want:     "https://host.example.com/arnnotify",
+		},
+		{
+			name:     "Success: a trailing slash does not produce an empty segment",
+			endpoint: "https://host.example.com/",
+			want:     "https://host.example.com/arnnotify",
+		},
+		{
+			name:     "Success: the suffix is not doubled when already present",
+			endpoint: "https://host.example.com/arnnotify",
+			want:     "https://host.example.com/arnnotify",
+		},
+		{
+			name:     "Success: the suffix is not doubled when present alongside a query string",
+			endpoint: "https://host.example.com/arnnotify?x=1",
+			want:     "https://host.example.com/arnnotify?x=1",
+		},
+		{
+			name:     "Success: a query string survives appending the suffix",
+			endpoint: "https://host.example.com?x=1",
+			want:     "https://host.example.com/arnnotify?x=1",
+		},
+		{
+			name:     "Success: the suffix is appended under an existing base path",
+			endpoint: "https://host.example.com/base",
+			want:     "https://host.example.com/base/arnnotify",
+		},
+		{
+			name:     "Error: the endpoint is not a parseable URL",
+			endpoint: "https://host.example.com/%zz",
+			wantErr:  true,
+		},
+	}
+
+	for _, test := range tests {
+		got, err := notifyEndpoint(test.endpoint)
+		switch {
+		case err == nil && test.wantErr:
+			t.Errorf("TestEndpointSuffix(%s): got err == nil, want err != nil", test.name)
+			continue
+		case err != nil && !test.wantErr:
+			t.Errorf("TestEndpointSuffix(%s): got err == %s, want err == nil", test.name, err)
+			continue
+		case err != nil:
+			continue
+		}
+		if got != test.want {
+			t.Errorf("TestEndpointSuffix(%s): got %s, want %s", test.name, got, test.want)
+		}
+	}
+}
+
+// TestNewEndpoint pins that New() surfaces a bad endpoint instead of building a client around it.
+// notifyEndpoint() used to panic on an unparseable endpoint, so the error it now returns had no way
+// of reaching the caller.
+func TestNewEndpoint(t *testing.T) {
+	t.Parallel()
+
+	cred := struct{ azcore.TokenCredential }{}
+
+	tests := []struct {
+		name     string
+		endpoint string
+		want     string
+		wantErr  bool
+	}{
+		{
+			name:     "Success: a good endpoint is normalized onto the client",
+			endpoint: "https://host.example.com?x=1",
+			want:     "https://host.example.com/arnnotify?x=1",
+		},
+		{
+			name:     "Error: an unparseable endpoint is rejected",
+			endpoint: "https://host.example.com/%zz",
+			wantErr:  true,
+		},
+	}
+
+	for _, test := range tests {
+		c, err := New(test.endpoint, cred, nil)
+		switch {
+		case err == nil && test.wantErr:
+			t.Errorf("TestNewEndpoint(%s): got err == nil, want err != nil", test.name)
+			continue
+		case err != nil && !test.wantErr:
+			t.Errorf("TestNewEndpoint(%s): got err == %s, want err == nil", test.name, err)
+			continue
+		case err != nil:
+			continue
+		}
+		if c.endpoint != test.want {
+			t.Errorf("TestNewEndpoint(%s): got c.endpoint == %s, want %s", test.name, c.endpoint, test.want)
 		}
 	}
 }

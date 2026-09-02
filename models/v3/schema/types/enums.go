@@ -17,7 +17,7 @@ import (
 type ResourcesContainer uint8
 
 const (
-	// RCUnknown is the default value, which tells the server to use inline.
+	// RCUnknown indicates that the container was not provided. This is a bug.
 	RCUnknown ResourcesContainer = 0 // ""
 	// RCInline is the value to use when the resources are inline.
 	RCInline ResourcesContainer = 1 // "inline"
@@ -132,10 +132,12 @@ func init() {
 type DataBoundary uint8
 
 const (
+	// DBUnknown indicates no data boundary was provided. Unlike the other Unknown values in this package
+	// this is legal, not a bug: the field is optional and DBUnknown omits it from the wire format.
 	DBUnknown DataBoundary = 0 // ""
-	// DataBoundary is the whole world.
+	// DBGlobal is the whole world.
 	DBGlobal DataBoundary = 1 // "global"
-	// DataBoundary is select locations in the EU.
+	// DBEU is select locations in the EU.
 	DBEU DataBoundary = 2 // "eu"
 )
 

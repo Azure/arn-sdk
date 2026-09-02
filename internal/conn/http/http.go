@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
+	"strconv"
 	"testing"
 
 	"github.com/Azure/arn-sdk/internal/build"
@@ -42,15 +44,6 @@ var changeScope = map[string]bool{
 	cloud.AzureGovernment.ActiveDirectoryAuthorityHost: true,
 	cloud.AzurePublic.ActiveDirectoryAuthorityHost:     true,
 }
-
-var readerPool = sync.NewPool(
-	context.Background(),
-	"readerPool",
-	func() *bytes.Reader {
-		return bytes.NewReader(nil)
-	},
-	sync.WithBuffer(10),
-)
 
 var flatePool = sync.NewPool(
 	context.Background(),
@@ -117,10 +110,30 @@ func (t *zlibTransport) Do(req *policy.Request) (*http.Response, error) {
 		default:
 		}
 
-		// Update the request with the compressed body.
-		httpReq.Body = io.NopCloser(compressedBuffer)
-		httpReq.ContentLength = int64(compressedBuffer.Len())
+		// The body is copied out of the pooled buffer rather than handed over directly. The transport
+		// writes the request body on its own goroutine and RoundTrip returns once response headers
+		// arrive, so an early response would leave that goroutine reading a buffer this function has
+		// already returned to the pool -- and *bytes.Buffer implements Resetter, so Put() would Reset()
+		// it mid-read. The pool still does its job as compression scratch space.
+		body := bytes.Clone(compressedBuffer.Bytes())
+		httpReq.Body = io.NopCloser(bytes.NewReader(body))
+		httpReq.ContentLength = int64(len(body))
 		httpReq.Header.Set("Content-Encoding", "deflate")
+
+		// GetBody must be replaced alongside Body: azcore's SetBody() points it at the original
+		// uncompressed stream, and net/http calls it to rebuild the body when it replays a request on a
+		// 307/308 redirect. Left alone it handed the redirect the uncompressed JSON while these headers
+		// still advertised deflate and the compressed length, so the transport killed the connection
+		// ("ContentLength=N with Body length M") and every redirected send failed after burning the
+		// full retry budget. Body, ContentLength, Content-Encoding and GetBody describe one payload and
+		// have to move together.
+		httpReq.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(body)), nil
+		}
+
+		// Kept in step for the same reason. net/http writes the field, not this header, so a stale value
+		// here does not corrupt the request, but it is what request dumps and later policies read.
+		httpReq.Header.Set("Content-Length", strconv.FormatInt(int64(len(body)), 10))
 	}
 
 	// Use the base RoundTripper to perform the actual request.
@@ -139,7 +152,7 @@ type Client struct {
 // Option is a function that configures the client.
 type Option func(*Client) error
 
-// WihtoutCompression turns off deflate compression for the client.
+// WithoutCompression turns off deflate compression for the client.
 func WithoutCompression() Option {
 	return func(c *Client) error {
 		c.compress = false
@@ -157,7 +170,7 @@ type Sender interface {
 func WithFake(s Sender) Option {
 	return func(c *Client) error {
 		if !testing.Testing() {
-			return fmt.Errorf("http.WithFakeSender() can only be used in tests")
+			return fmt.Errorf("http.WithFake() can only be used in tests")
 		}
 		c.fakeSender = s
 		return nil
@@ -203,14 +216,36 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 		return nil, err
 	}
 
-	if path.Dir(endpoint) != "arnnotify" {
-		endpoint = runtime.JoinPaths(endpoint, "/arnnotify")
+	endpoint, err = notifyEndpoint(endpoint)
+	if err != nil {
+		return nil, err
 	}
 
-	return &Client{
-		endpoint: endpoint,
-		client:   azclient,
-	}, nil
+	// Assign onto c rather than returning a fresh Client: the option loop above configured c, and
+	// building a new value here silently discarded everything it set.
+	c.endpoint = endpoint
+	c.client = azclient
+	return c, nil
+}
+
+// notifyEndpoint appends the ARN notify suffix unless the endpoint already carries it. Both halves of
+// the guard have bitten us: path.Dir returns the parent ("https:/host") so it never equalled the
+// suffix, and path.Base over the raw string returns the last segment with any query still attached
+// ("arnnotify?x=1"), which does not equal it either. Either way a second suffix was appended and every
+// send 404ed. Matching on the parsed u.Path fixes both, and rebuilding from the URL keeps the query.
+func notifyEndpoint(endpoint string) (string, error) {
+	const suffix = "arnnotify"
+
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("could not parse ARN endpoint %q: %w", endpoint, err)
+	}
+	if path.Base(u.Path) == suffix {
+		return endpoint, nil
+	}
+
+	u.Path = path.Join(u.Path, suffix)
+	return u.String(), nil
 }
 
 // Send sends an event (converted to JSON bytes) to the ARN receiver API.
@@ -222,11 +257,9 @@ func (c *Client) Send(ctx context.Context, event []byte, headers []string) error
 		return fmt.Errorf("headers must be key-value pairs")
 	}
 
-	read := readerPool.Get(ctx)
-	read.Reset(event)
-	defer readerPool.Put(ctx, read)
-
-	req, err := c.setup(ctx, read, headers)
+	// Not pooled: this reader becomes the request body, and the transport may still be reading it after
+	// Do() returns. Recycling it would let a later Reset() race that read. See zlibTransport.Do.
+	req, err := c.setup(ctx, bytes.NewReader(event), headers)
 	if err != nil {
 		return err
 	}

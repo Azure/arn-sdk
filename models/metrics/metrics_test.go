@@ -46,6 +46,15 @@ func TestModelsMetrics(t *testing.T) {
 				Promise(ctx, models.ErrPromiseTimeout)
 				ActivePromise(ctx)
 				Promise(ctx, models.ErrBatchSize)
+				// Notify's case: the wait gave up and nobody can wait again, so the timeout is the
+				// promise's terminal outcome. One wait-timeout, one completion, gauge settled.
+				ActivePromise(ctx)
+				PromiseWaitTimeout(ctx)
+				Promise(ctx, models.ErrPromiseTimeout)
+				// Async's case: the wait gave up but the caller still holds the notification. Counted
+				// as a wait only -- no completion, and the gauge stays up because it is still in flight.
+				ActivePromise(ctx)
+				PromiseWaitTimeout(ctx)
 			},
 		},
 		{
@@ -60,6 +69,15 @@ func TestModelsMetrics(t *testing.T) {
 				Promise(ctx, models.ErrPromiseTimeout)
 				ActivePromise(ctx)
 				Promise(ctx, models.ErrBatchSize)
+				// Notify's case: the wait gave up and nobody can wait again, so the timeout is the
+				// promise's terminal outcome. One wait-timeout, one completion, gauge settled.
+				ActivePromise(ctx)
+				PromiseWaitTimeout(ctx)
+				Promise(ctx, models.ErrPromiseTimeout)
+				// Async's case: the wait gave up but the caller still holds the notification. Counted
+				// as a wait only -- no completion, and the gauge stays up because it is still in flight.
+				ActivePromise(ctx)
+				PromiseWaitTimeout(ctx)
 			},
 		},
 	}

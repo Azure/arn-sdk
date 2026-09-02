@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -87,7 +88,8 @@ func TestDeflate(t *testing.T) {
 
 	handler := &httpHandler{results: make([]flateData, len(data)-1)}
 	// Set up the HTTP route
-	http.HandleFunc("/deflate", handler.handleDeflateRequest)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/deflate", handler.handleDeflateRequest)
 
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -95,7 +97,7 @@ func TestDeflate(t *testing.T) {
 	}
 
 	go func() {
-		if err := http.Serve(listener, nil); err != nil {
+		if err := http.Serve(listener, mux); err != nil {
 			fmt.Printf("Failed to start server: %v\n", err)
 		}
 	}()
@@ -167,5 +169,94 @@ func TestDeflate(t *testing.T) {
 		if result.ID != data[result.Num].ID {
 			t.Fatalf("TestDeflate: for result(%d): expected ID %s, got %s", i, data[result.Num].ID, result.ID)
 		}
+	}
+}
+
+// TestDeflateRedirect pins that a 307 replay carries the compressed body. zlibTransport.Do() swaps in a
+// compressed Body but used to leave GetBody pointing at azcore's original uncompressed stream, so
+// net/http rebuilt the redirected request from the uncompressed JSON while the headers still advertised
+// deflate and the compressed length. The transport then broke the connection with
+// "ContentLength=N with Body length M" and the send failed after exhausting its retries.
+func TestDeflateRedirect(t *testing.T) {
+	got := make(chan flateData, 1)
+	handlerErr := make(chan error, 4)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/final", func(w http.ResponseWriter, r *http.Request) {
+		if enc := r.Header.Get("Content-Encoding"); enc != "deflate" {
+			handlerErr <- fmt.Errorf("final: Content-Encoding == %q, want \"deflate\"", enc)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		zr, err := zlib.NewReader(r.Body)
+		if err != nil {
+			handlerErr <- fmt.Errorf("final: zlib.NewReader: %w", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		defer zr.Close()
+		b, err := io.ReadAll(zr)
+		if err != nil {
+			handlerErr <- fmt.Errorf("final: read: %w", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var f flateData
+		if err := json.Unmarshal(b, &f); err != nil {
+			handlerErr <- fmt.Errorf("final: unmarshal: %w", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		got <- f
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/redirect", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/final", http.StatusTemporaryRedirect)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{newFlateTransport()}}
+	azclient, err := azcore.NewClient("arn.Client", build.Version, plOpts, &policy.ClientOptions{})
+	if err != nil {
+		t.Fatalf("TestDeflateRedirect: NewClient(): got err == %s, want err == nil", err)
+	}
+
+	want := flateData{Num: 7, ID: "redirect-me"}
+	b, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("TestDeflateRedirect: Marshal(): got err == %s, want err == nil", err)
+	}
+
+	req, err := runtime.NewRequest(t.Context(), http.MethodPost, srv.URL+"/redirect")
+	if err != nil {
+		t.Fatalf("TestDeflateRedirect: NewRequest(): got err == %s, want err == nil", err)
+	}
+	req.Raw().Header["Accept"] = appJSON
+	if err := req.SetBody(rsc{bytes.NewReader(b)}, "application/json"); err != nil {
+		t.Fatalf("TestDeflateRedirect: SetBody(): got err == %s, want err == nil", err)
+	}
+
+	resp, err := azclient.Pipeline().Do(req)
+	if err != nil {
+		t.Fatalf("TestDeflateRedirect: Do(): got err == %s, want err == nil", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("TestDeflateRedirect: got status %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	close(handlerErr)
+	for e := range handlerErr {
+		t.Errorf("TestDeflateRedirect: %s", e)
+	}
+
+	select {
+	case f := <-got:
+		if f != want {
+			t.Errorf("TestDeflateRedirect: got %+v, want %+v", f, want)
+		}
+	default:
+		t.Errorf("TestDeflateRedirect: the redirected request never reached /final intact")
 	}
 }
