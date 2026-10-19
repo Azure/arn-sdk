@@ -18,32 +18,23 @@ import (
 	"github.com/gostdlib/base/context"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 )
 
 /*
-Note: these come from: https://eng.ms/docs/cloud-ai-platform/azure-core/azure-management-and-platforms/control-plane-bburns/azure-resource-notifications/azure-resource-notifications-documentation/partners/publisher/receiver-api-usage#authentication
+Note: these come from: https://eng.ms/docs/cloud-ai-platform/azure-core/azure-cloud-native-and-management-platform/control-plane-bburns/azure-resource-notifications/azure-resource-notifications/partners/publisher/receiver-service/receiver-api-usage#authentication
 
 Environment	                    AAD Cloud    Tenant	                                Audience
-DogfoodProd	                    Prod         72f988bf-86f1-41af-91ab-2d7cd011db47	api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986/
-DogfoodPPE	                    PPE	         ea8a4392-515e-481f-879e-6571ff2a8a36	api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986/
-Public Cloud (including canary)	Prod         33e01921-4d64-4f8c-a055-5bdaffd5e33d	api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986/
-AzureUSGovernment	            Prod         cab8a31a-1906-4287-a0d8-4eef66b95f6e	api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986/
-PAzureChinaCloud	            Prod         a55a4d5b-9241-49b1-b4ff-befa8db00269	api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986/
+DogfoodProd	                    Prod         72f988bf-86f1-41af-91ab-2d7cd011db47	api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986
+DogfoodPPE	                    PPE	         ea8a4392-515e-481f-879e-6571ff2a8a36	api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986
+Public Cloud (including canary)	Prod         33e01921-4d64-4f8c-a055-5bdaffd5e33d	api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986
+AzureUSGovernment	            Prod         cab8a31a-1906-4287-a0d8-4eef66b95f6e	api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986
+PAzureChinaCloud	            Prod         a55a4d5b-9241-49b1-b4ff-befa8db00269	api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986
 */
 const (
-	scopeDefault = "https://arg.management.core.windows.net//.default"
-	allOthers    = "api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986//.default"
+	scopeDefault = "api://41fc9deb-1ccc-4fcc-871d-12bf54ad8986/.default"
 )
-
-// Note: The SDK does not seem to have anything for DogfoodProd or DogfoodPPE.
-var changeScope = map[string]bool{
-	cloud.AzureChina.ActiveDirectoryAuthorityHost:      true,
-	cloud.AzureGovernment.ActiveDirectoryAuthorityHost: true,
-	cloud.AzurePublic.ActiveDirectoryAuthorityHost:     true,
-}
 
 var flatePool = sync.NewPool(
 	context.Background(),
@@ -197,14 +188,9 @@ func New(endpoint string, cred azcore.TokenCredential, opts *policy.ClientOption
 		return c, nil
 	}
 
-	var scope = scopeDefault
-	if changeScope[opts.Cloud.ActiveDirectoryAuthorityHost] {
-		scope = allOthers
-	}
-
 	plOpts := runtime.PipelineOptions{
 		PerRetry: []policy.Policy{
-			runtime.NewBearerTokenPolicy(cred, []string{scope}, nil),
+			runtime.NewBearerTokenPolicy(cred, []string{scopeDefault}, nil),
 		},
 	}
 	if c.compress {
