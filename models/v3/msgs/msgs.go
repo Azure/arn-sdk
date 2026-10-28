@@ -2,6 +2,7 @@
 package msgs
 
 import (
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -21,7 +22,6 @@ import (
 	"github.com/gostdlib/base/concurrency/sync"
 	"github.com/gostdlib/base/context"
 
-	"github.com/go-json-experiment/json"
 	"github.com/google/uuid"
 )
 

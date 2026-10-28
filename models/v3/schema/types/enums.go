@@ -6,9 +6,8 @@ package types
 // methods. These use unsafe to prevent allocations.
 
 import (
+	"encoding/json/v2"
 	"unsafe"
-
-	"github.com/go-json-experiment/json"
 )
 
 //go:generate stringer -type=ResourcesContainer -linecomment

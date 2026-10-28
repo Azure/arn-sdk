@@ -2,6 +2,7 @@ package msgs
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/url"
@@ -17,7 +18,6 @@ import (
 	"github.com/Azure/arn-sdk/models/v3/schema/types"
 	"github.com/Azure/arn-sdk/models/version"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"github.com/go-json-experiment/json"
 	"github.com/google/uuid"
 	"github.com/kylelemons/godebug/pretty"
 )
