@@ -2,11 +2,11 @@ package types
 
 import (
 	stdjson "encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"github.com/go-json-experiment/json"
 )
 
 const (

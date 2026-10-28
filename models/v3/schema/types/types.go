@@ -16,13 +16,13 @@ package types
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	jsonv2 "github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
 )
 
 const (
@@ -205,7 +205,7 @@ type AdditionalBatchProperties struct {
 	// Others is a map of additional properties that are provided by the user. These should not
 	// include keys that are already defined in the struct. These entries are inlined into the
 	// object when serialized.
-	Others map[string]any `json:",inline"`
+	Others map[string]any `json:",embed"`
 	// BatchCorrelationID is a unique identifier for the batch of notifications. This can be used by
 	// ARN or ARG in traces. This is a GUID. Optional.
 	BatchCorrelationID string `json:"batchCorrelationId"`

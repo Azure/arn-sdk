@@ -1,12 +1,56 @@
 package envelope
 
 import (
+	stdjson "encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/Azure/arn-sdk/models/v3/schema/types"
 	"github.com/Azure/arn-sdk/models/version"
 )
+
+func TestEventMarshalEmbedding(t *testing.T) {
+	t.Parallel()
+
+	const fleetID = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.ContainerService/fleets/test"
+	event := Event{
+		EventMeta: EventMeta{ID: "event-id", Subject: "subject"},
+		Data: types.Data{
+			AdditionalBatchProperties: types.AdditionalBatchProperties{
+				Others:    map[string]any{"FleetResourceId": fleetID},
+				BatchSize: 1,
+			},
+		},
+	}
+	b, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		ID        string `json:"id"`
+		Subject   string `json:"subject"`
+		EventMeta any    `json:"EventMeta"`
+		Data      struct {
+			AdditionalBatchProperties struct {
+				FleetResourceID string `json:"FleetResourceId"`
+				BatchSize       int    `json:"batchSize"`
+				Others          any    `json:"Others"`
+			} `json:"additionalBatchProperties"`
+		} `json:"data"`
+	}
+	if err := stdjson.Unmarshal(b, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire.ID != event.EventMeta.ID || wire.Subject != event.EventMeta.Subject || wire.EventMeta != nil {
+		t.Errorf("event metadata is not flattened: %s", b)
+	}
+	props := wire.Data.AdditionalBatchProperties
+	if props.FleetResourceID != fleetID || props.BatchSize != 1 || props.Others != nil {
+		t.Errorf("additional batch properties are not flattened: %s", b)
+	}
+}
 
 func TestEventValidate(t *testing.T) {
 	t.Parallel()

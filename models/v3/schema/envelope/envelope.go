@@ -15,7 +15,7 @@ import (
 // Event is the event being sent to the ARN service.
 type Event struct {
 	// EventMeta is the metadata of the event. This is inlined during Marshaling.
-	EventMeta EventMeta `json:",inline"`
+	EventMeta EventMeta `json:",embed"`
 	// Data is the data of the event.
 	Data types.Data `json:"data"`
 }
